@@ -44,7 +44,8 @@ C intrinsics(`<riscv_vector.h>`,RVV 1.0)编写,编译期通过宏选择,与
 | multicomb 尾部(增益合成/缩放)+ compute_rms16 | filters.c(rvv/filters_rvv.h 助手,调用点 #ifdef 切换) | ✅ |
 | LSP 量化 / 权重            | lsp.c, quant_lsp.c| `OVERRIDE_LSP_QUANT` `OVERRIDE_LSP_WEIGHT_QUANT` ⬜ |
 | Chebyshev 多项式求值       | lsp.c             | `OVERRIDE_CHEB_POLY_EVA` ⬜ |
-| QMF 多相分解/合成          | filters.c qmf_*   | ⬜ |
+| lsp_to_lpc(级联展开)      | lsp.c             | ✅(bit-exact 但 e2e ≈0%,剖析假象热点) |
+| QMF 多相分解/合成          | filters.c qmf_*   | ⬜(预估 ≤3%) |
 | FFT                        | kiss_fft/kiss_fftr(经 fftwrap.c 调用)| ⬜ |
 
 ## 硬性规则

@@ -1,0 +1,164 @@
+/* RVV implementation of lsp_to_lpc (lsp.c, fixed-point version).
+ *
+ * The scalar code cascades m second-order sections over an impulse,
+ * filling the xp/xq matrices row by row; the per-stage inner loop is a
+ * pure element-wise update over contiguous row segments:
+ *   xp[i+1][j+2] = (xp[i][j+2] - MULT16_32_Q14(freqn[2i],  xp[i][j+1]))
+ *                + xp[i][j]
+ * (xq likewise with freqn[2i+1]). Lanes = row position j.
+ *
+ * MULT16_32_Q14(a,b) splits b into high (b>>14) and low (b&0x3fff) 16-bit
+ * halves: a*hi + ((a*lo)>>14), each product an exact int16*int16 widening
+ * MAC and the shift arithmetic — all replicated exactly with vector ops.
+ * Row adds are int32 wrap (ADD32/SUB32), so element order is free.
+ * The scalar prologue (freqn, matrix zero/trivial entries), the trailing
+ * column of each stage and the final ak extraction stay scalar.
+ *
+ * Only valid for the fixed-point build; otherwise lsp.c falls back. */
+#ifndef SPEEX_LSP_RVV_H
+#define SPEEX_LSP_RVV_H
+
+#include "rvv_arch.h"
+
+#if defined(FIXED_POINT)
+
+void lsp_to_lpc(const spx_lsp_t *freq,spx_coef_t *ak,int lpcrdr, char *stack)
+{
+    int i,j;
+    spx_word32_t xout1,xout2,xin;
+    spx_word32_t mult, a;
+    VARDECL(spx_word16_t *freqn);
+    VARDECL(spx_word32_t **xp);
+    VARDECL(spx_word32_t *xpmem);
+    VARDECL(spx_word32_t **xq);
+    VARDECL(spx_word32_t *xqmem);
+    int m = lpcrdr>>1;
+    size_t vlmax = __riscv_vsetvlmax_e32m2();
+    vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
+    vint16m1_t zero16 = __riscv_vmv_v_x_i16m1(0, vlmax);
+
+    ALLOC(xp, (m+1), spx_word32_t*);
+    ALLOC(xpmem, (m+1)*(lpcrdr+1+2), spx_word32_t);
+
+    ALLOC(xq, (m+1), spx_word32_t*);
+    ALLOC(xqmem, (m+1)*(lpcrdr+1+2), spx_word32_t);
+
+    for(i=0; i<=m; i++) {
+      xp[i] = xpmem + i*(lpcrdr+1+2);
+      xq[i] = xqmem + i*(lpcrdr+1+2);
+    }
+
+    /* work out 2cos terms in Q14 */
+
+    ALLOC(freqn, lpcrdr, spx_word16_t);
+    for (i=0;i<lpcrdr;i++)
+       freqn[i] = ANGLE2X(freq[i]);
+
+    #define QIMP  21   /* scaling for impulse */
+
+    xin = SHL32(EXTEND32(1), (QIMP-1)); /* 0.5 in QIMP format */
+
+    /* first col and last non-zero values of each row are trivial */
+
+    for(i=0;i<=m;i++) {
+     xp[i][1] = 0;
+     xp[i][2] = xin;
+     xp[i][2+2*i] = xin;
+     xq[i][1] = 0;
+     xq[i][2] = xin;
+     xq[i][2+2*i] = xin;
+    }
+
+    /* 2nd row (first output row) is trivial */
+
+    xp[1][3] = -MULT16_32_Q14(freqn[0],xp[0][2]);
+    xq[1][3] = -MULT16_32_Q14(freqn[1],xq[0][2]);
+
+    xout1 = xout2 = 0;
+
+    /* now generate remaining rows */
+
+    for(i=1;i<m;i++) {
+
+      int count = 2*(i+1)-2;
+      spx_word16_t ap = freqn[2*i], aq = freqn[2*i+1];
+      size_t off = 0, n = (size_t)count;
+      j = 1;
+      while (n > 0)
+      {
+         size_t vl = __riscv_vsetvl_e16m1(n);
+         vint16m1_t ap16 = __riscv_vmv_v_x_i16m1(ap, vl);
+         vint16m1_t aq16 = __riscv_vmv_v_x_i16m1(aq, vl);
+         /* p row */
+         {
+            vint32m2_t b = __riscv_vle32_v_i32m2(xp[i] + j + 1, vl);
+            vint16m1_t hi = __riscv_vncvt_x_x_w_i16m1(
+                  __riscv_vsra_vx_i32m2(b, 14, vl), vl);
+            vint16m1_t lo = __riscv_vncvt_x_x_w_i16m1(
+                  __riscv_vand_vx_i32m2(b, 0x3fff, vl), vl);
+            /* C: ADD32(MULT16_16(a, b>>14), SHR(MULT16_16(a, b&0x3fff), 14))
+             * — the >>14 applies ONLY to the low-half product. */
+            vint32m2_t term = __riscv_vwmacc_vx_i32m2(zero32, ap, hi, vl);
+            vint32m2_t term_lo = __riscv_vsra_vx_i32m2(
+                  __riscv_vwmacc_vx_i32m2(zero32, ap, lo, vl), 14, vl);
+            term = __riscv_vadd_vv_i32m2(term, term_lo, vl);
+            vint32m2_t out = __riscv_vadd_vv_i32m2(
+               __riscv_vsub_vv_i32m2(__riscv_vle32_v_i32m2(xp[i] + j + 2, vl),
+                                     term, vl),
+               __riscv_vle32_v_i32m2(xp[i] + j, vl), vl);
+            __riscv_vse32_v_i32m2(xp[i+1] + j + 2, out, vl);
+         }
+         /* q row */
+         {
+            vint32m2_t b = __riscv_vle32_v_i32m2(xq[i] + j + 1, vl);
+            vint16m1_t hi = __riscv_vncvt_x_x_w_i16m1(
+                  __riscv_vsra_vx_i32m2(b, 14, vl), vl);
+            vint16m1_t lo = __riscv_vncvt_x_x_w_i16m1(
+                  __riscv_vand_vx_i32m2(b, 0x3fff, vl), vl);
+            vint32m2_t term = __riscv_vwmacc_vx_i32m2(zero32, aq, hi, vl);
+            vint32m2_t term_lo = __riscv_vsra_vx_i32m2(
+                  __riscv_vwmacc_vx_i32m2(zero32, aq, lo, vl), 14, vl);
+            term = __riscv_vadd_vv_i32m2(term, term_lo, vl);
+            vint32m2_t out = __riscv_vadd_vv_i32m2(
+               __riscv_vsub_vv_i32m2(__riscv_vle32_v_i32m2(xq[i] + j + 2, vl),
+                                     term, vl),
+               __riscv_vle32_v_i32m2(xq[i] + j, vl), vl);
+            __riscv_vse32_v_i32m2(xq[i+1] + j + 2, out, vl);
+         }
+         off += vl;
+         j += vl;
+         n -= vl;
+      }
+      (void)off;
+
+      /* for last col xp[i][j+2] = xq[i][j+2] = 0 */
+
+      mult = MULT16_32_Q14(freqn[2*i],xp[i][j+1]);
+      xp[i+1][j+2] = SUB32(xp[i][j], mult);
+      mult = MULT16_32_Q14(freqn[2*i+1],xq[i][j+1]);
+      xq[i+1][j+2] = SUB32(xq[i][j], mult);
+    }
+
+    /* process last row to extra a{k} */
+
+    for(j=1;j<=lpcrdr;j++) {
+      int shift = QIMP-13;
+
+      /* final filter sections */
+      a = PSHR32(xp[m][j+2] + xout1 + xq[m][j+2] - xout2, shift);
+      xout1 = xp[m][j+2];
+      xout2 = xq[m][j+2];
+
+      /* hard limit ak's to +/- 32767 */
+
+      if (a < -32767) a = -32767;
+      if (a > 32767) a = 32767;
+      ak[j-1] = (short)a;
+
+    }
+
+}
+
+#endif /* FIXED_POINT */
+
+#endif /* SPEEX_LSP_RVV_H */
