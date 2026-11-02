@@ -354,9 +354,140 @@ static void rvv_qmf_decomp(const spx_word16_t *xx, const spx_word16_t *aa, spx_w
  * modulo 2^32 (wrap int32 adds, exact products). Tails:
  * EXTRACT16(SATURATE32(PSHR32(y,15),32767)), stored via four stride-8
  * stores (interleave). N2 must be a multiple of 2. */
-/* qmf_synth: an RVV version was attempted in round 10 but reverted
- * (not bit-exact — see test/qmf_diff.c and docs/perf-log.md). The
- * scalar reference remains in filters.c. */
+/* qmf_synth: schedule-driven entry-parallel version. A scalar pre-pass
+ * replays the reference's rolling registers and emits one entry per
+ * PRODUCT (xx1/xx2 array, window index, sign, target accumulator); the
+ * vector loop executes the schedule mechanically with lanes = output
+ * groups (i = 2l). The window index DESCENDS by 2 elements per lane
+ * (i grows), hence the negative -4-byte load stride; outputs are
+ * interleaved y[4l..4l+3], stored with +8-byte strides. Verified by
+ * test/qmf_diff.c (per-tap isolation + codec-real N=320/M=64). */
+static void rvv_qmf_synth(const spx_word16_t *x1, const spx_word16_t *x2, const spx_word16_t *a, spx_word16_t *y, int N, int M, spx_word16_t *mem1, spx_word16_t *mem2, char *stack)
+{
+   int i, t;
+   int M2, N2;
+   VARDECL(spx_word16_t *xx1);
+   VARDECL(spx_word16_t *xx2);
+   VARDECL(spx_word16_t *yyp);
+   VARDECL(spx_word16_t *yy2p);
+   size_t vlmax = __riscv_vsetvlmax_e32m2();
+   vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
+
+   M2 = M>>1;
+   N2 = N>>1;
+   if ((M & 3) || (N2 & 1))
+      return; /* not reached for codec QMF parameters; caller falls back */
+
+   ALLOC(xx1, M2+N2, spx_word16_t);
+   ALLOC(xx2, M2+N2, spx_word16_t);
+   ALLOC(yyp, M2+N2, spx_word16_t);
+   ALLOC(yy2p, M2+N2, spx_word16_t);
+
+   for (i = 0; i < N2; i++)
+      xx1[i] = x1[N2-1-i];
+   for (i = 0; i < M2; i++)
+      xx1[N2+i] = mem1[2*i+1];
+   for (i = 0; i < N2; i++)
+      xx2[i] = x2[N2-1-i];
+   for (i = 0; i < M2; i++)
+      xx2[N2+i] = mem2[2*i+1];
+   for (i = 0; i < M2+N2-1; i++)
+   {
+      yyp[i] = xx1[N2+M2-2-i];
+      yy2p[i] = xx2[N2+M2-2-i];
+   }
+   yyp[M2+N2-1] = 0;
+   yy2p[M2+N2-1] = 0;
+
+   {
+      /* schedule: 16 products per 4-tap pair (pair j = 2*jj covers taps
+       * 4jj..4jj+3); window indices WITHOUT the per-lane -i term */
+      int s_arr[4*M], s_idx[4*M], s_sign[4*M], s_acc[4*M], s_cidx[4*M];
+      int nw = 0;
+      int j, x10i = N2-2, x20i = N2-2, x11i, x21i;
+      int term, acc_i;
+      for (j = 0; j < M2; j += 2)
+      {
+         x11i = N2-1+j; x21i = N2-1+j;
+         /* substep A: y0 += a[2j]*x11 - a[2j]*x21
+                      y2 += a[2j]*x10 - a[2j]*x20
+                      y1 += a[2j+1]*x11 + a[2j+1]*x21
+                      y3 += a[2j+1]*x10 + a[2j+1]*x20 */
+         s_arr[nw]=0; s_idx[nw]=x11i; s_sign[nw]=+1; s_acc[nw]=0; s_cidx[nw]=2*j;   nw++;
+         s_arr[nw]=1; s_idx[nw]=x21i; s_sign[nw]=-1; s_acc[nw]=0; s_cidx[nw]=2*j;   nw++;
+         s_arr[nw]=0; s_idx[nw]=x10i; s_sign[nw]=+1; s_acc[nw]=2; s_cidx[nw]=2*j;   nw++;
+         s_arr[nw]=1; s_idx[nw]=x20i; s_sign[nw]=-1; s_acc[nw]=2; s_cidx[nw]=2*j;   nw++;
+         s_arr[nw]=0; s_idx[nw]=x11i; s_sign[nw]=+1; s_acc[nw]=1; s_cidx[nw]=2*j+1; nw++;
+         s_arr[nw]=1; s_idx[nw]=x21i; s_sign[nw]=+1; s_acc[nw]=1; s_cidx[nw]=2*j+1; nw++;
+         s_arr[nw]=0; s_idx[nw]=x10i; s_sign[nw]=+1; s_acc[nw]=3; s_cidx[nw]=2*j+1; nw++;
+         s_arr[nw]=1; s_idx[nw]=x20i; s_sign[nw]=+1; s_acc[nw]=3; s_cidx[nw]=2*j+1; nw++;
+         /* substep B: y0 += a[2j+2]*x10' - a[2j+2]*x20'
+                      y2 += a[2j+2]*x11 - a[2j+2]*x21
+                      y1 += a[2j+3]*x10' + a[2j+3]*x20'
+                      y3 += a[2j+3]*x11 + a[2j+3]*x21
+            (x10'/x20' = rolled windows xx1[N2+j-i]/xx2[N2+j-i]) */
+         s_arr[nw]=0; s_idx[nw]=N2+j; s_sign[nw]=+1; s_acc[nw]=0; s_cidx[nw]=2*j+2; nw++;
+         s_arr[nw]=1; s_idx[nw]=N2+j; s_sign[nw]=-1; s_acc[nw]=0; s_cidx[nw]=2*j+2; nw++;
+         s_arr[nw]=0; s_idx[nw]=x11i; s_sign[nw]=+1; s_acc[nw]=2; s_cidx[nw]=2*j+2; nw++;
+         s_arr[nw]=1; s_idx[nw]=x21i; s_sign[nw]=-1; s_acc[nw]=2; s_cidx[nw]=2*j+2; nw++;
+         s_arr[nw]=0; s_idx[nw]=N2+j; s_sign[nw]=+1; s_acc[nw]=1; s_cidx[nw]=2*j+3; nw++;
+         s_arr[nw]=1; s_idx[nw]=N2+j; s_sign[nw]=+1; s_acc[nw]=1; s_cidx[nw]=2*j+3; nw++;
+         s_arr[nw]=0; s_idx[nw]=x11i; s_sign[nw]=+1; s_acc[nw]=3; s_cidx[nw]=2*j+3; nw++;
+         s_arr[nw]=1; s_idx[nw]=x21i; s_sign[nw]=+1; s_acc[nw]=3; s_cidx[nw]=2*j+3; nw++;
+         x10i = N2+j; x20i = N2+j;
+      }
+      (void)x10i; (void)x20i;
+      {
+         size_t G = (size_t)N2>>1;   /* output groups; N2 multiple of 2 */
+         size_t off = 0, n = G;
+         while (n > 0)
+         {
+            size_t vl = __riscv_vsetvl_e16m1(n);
+            size_t base = off<<1;   /* i = 2l for lane l */
+            vint32m2_t acc0 = zero32, acc1 = zero32, acc2 = zero32, acc3 = zero32;
+            for (term = 0; term < nw; term++)
+            {
+               const spx_word16_t *src = s_arr[term] ? yy2p : yyp;
+               /* transform the xx1/xx2 window index into the descending
+                * yyp/yy2p layout; the window index still descends by 2
+                * per lane: byte stride -4 */
+               int q = (N2+M2-2) - s_idx[term] + (int)base;
+               vint16m1_t w = __riscv_vlse16_v_i16m1(src + q, 4, vl);
+               spx_word16_t c = (spx_word16_t)(s_sign[term] * a[s_cidx[term]]);
+               switch (s_acc[term])
+               {
+               case 0: acc0 = __riscv_vwmacc_vx_i32m2(acc0, c, w, vl); break;
+               case 1: acc1 = __riscv_vwmacc_vx_i32m2(acc1, c, w, vl); break;
+               case 2: acc2 = __riscv_vwmacc_vx_i32m2(acc2, c, w, vl); break;
+               case 3: acc3 = __riscv_vwmacc_vx_i32m2(acc3, c, w, vl); break;
+               }
+            }
+            for (acc_i = 0; acc_i < 4; acc_i++)
+            {
+               if (acc_i == 0) { acc0 = __riscv_vadd_vx_i32m2(acc0, 1 << 14, vl); acc0 = __riscv_vsra_vx_i32m2(acc0, 15, vl); acc0 = __riscv_vmin_vx_i32m2(acc0, 32767, vl); acc0 = __riscv_vmax_vx_i32m2(acc0, -32767, vl); }
+               if (acc_i == 1) { acc1 = __riscv_vadd_vx_i32m2(acc1, 1 << 14, vl); acc1 = __riscv_vsra_vx_i32m2(acc1, 15, vl); acc1 = __riscv_vmin_vx_i32m2(acc1, 32767, vl); acc1 = __riscv_vmax_vx_i32m2(acc1, -32767, vl); }
+               if (acc_i == 2) { acc2 = __riscv_vadd_vx_i32m2(acc2, 1 << 14, vl); acc2 = __riscv_vsra_vx_i32m2(acc2, 15, vl); acc2 = __riscv_vmin_vx_i32m2(acc2, 32767, vl); acc2 = __riscv_vmax_vx_i32m2(acc2, -32767, vl); }
+               if (acc_i == 3) { acc3 = __riscv_vadd_vx_i32m2(acc3, 1 << 14, vl); acc3 = __riscv_vsra_vx_i32m2(acc3, 15, vl); acc3 = __riscv_vmin_vx_i32m2(acc3, 32767, vl); acc3 = __riscv_vmax_vx_i32m2(acc3, -32767, vl); }
+            }
+            {
+               size_t ybase = base<<1;   /* y[2i] = y[4l] */
+               __riscv_vsse16_v_i16m1(y + ybase + 0, 8, __riscv_vncvt_x_x_w_i16m1(acc0, vl), vl);
+               __riscv_vsse16_v_i16m1(y + ybase + 1, 8, __riscv_vncvt_x_x_w_i16m1(acc1, vl), vl);
+               __riscv_vsse16_v_i16m1(y + ybase + 2, 8, __riscv_vncvt_x_x_w_i16m1(acc2, vl), vl);
+               __riscv_vsse16_v_i16m1(y + ybase + 3, 8, __riscv_vncvt_x_x_w_i16m1(acc3, vl), vl);
+            }
+            off += vl;
+            n -= vl;
+         }
+      }
+   }
+
+   for (i = 0; i < M2; i++)
+      mem1[2*i+1] = xx1[i];
+   for (i = 0; i < M2; i++)
+      mem2[2*i+1] = xx2[i];
+}
+
 
 #endif /* FIXED_POINT */
 

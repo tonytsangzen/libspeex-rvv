@@ -199,6 +199,69 @@ int main(void)
             }
          }
       }
+      /* schedule-vs-scalar trace for group i=0 */
+      if (pi == 0 && trial == 0)
+      {
+         const int NFRAMES = param_N[0];
+         const int MQMF = param_M[0];
+         int M2 = MQMF>>1, N2 = NFRAMES>>1;
+         spx_word16_t a_loc[80], xx1[96], xx2[96];
+         int x10i, x20i, j, k;
+         for (i = 0; i < MQMF; i++) a_loc[i] = aa[i];
+         for (i = 0; i < N2; i++) { xx1[i] = x1[N2-1-i]; xx2[i] = x2[N2-1-i]; }
+         for (i = 0; i < M2; i++) { xx1[N2+i] = m1b[2*i+1]; xx2[N2+i] = m2b[2*i+1]; }
+         /* scalar per-pair partials for y0 (group i=0) */
+         x10i = N2-2; x20i = N2-2;
+         {
+            spx_word32_t y0 = 0, y1s = 0, y2s = 0, y3s = 0;
+            printf("SCALAR group0 trace:\n");
+            for (j = 0; j < M2; j += 2)
+            {
+               int x11i = N2-1+j, x21i = N2-1+j;
+               y0 = MAC16_16(MAC16_16(y0, a_loc[2*j], xx1[x11i]), NEG16(a_loc[2*j]), xx2[x21i]);
+               y2s = MAC16_16(MAC16_16(y2s, a_loc[2*j], xx1[x10i]), NEG16(a_loc[2*j]), xx2[x20i]);
+               y1s = MAC16_16(MAC16_16(y1s, a_loc[2*j+1], xx1[x11i]), a_loc[2*j+1], xx2[x21i]);
+               y3s = MAC16_16(MAC16_16(y3s, a_loc[2*j+1], xx1[x10i]), a_loc[2*j+1], xx2[x20i]);
+               printf("  pair j=%d A: y0=%d y1=%d y2=%d y3=%d (x11=%d x10=%d)\n",
+                      j, y0, y1s, y2s, y3s, xx1[x11i], xx1[x10i]);
+               y0 = MAC16_16(MAC16_16(y0, a_loc[2*j+2], xx1[N2+j]), NEG16(a_loc[2*j+2]), xx2[N2+j]);
+               y2s = MAC16_16(MAC16_16(y2s, a_loc[2*j+2], xx2[x21i]), NEG16(a_loc[2*j+2]), xx1[x11i]);
+               y1s = MAC16_16(MAC16_16(y1s, a_loc[2*j+3], xx1[N2+j]), a_loc[2*j+3], xx2[N2+j]);
+               y3s = MAC16_16(MAC16_16(y3s, a_loc[2*j+3], xx2[x21i]), a_loc[2*j+3], xx1[x11i]);
+               printf("  pair j=%d B: y0=%d y1=%d y2=%d y3=%d (x10'=%d x20'=%d)\n",
+                      j, y0, y1s, y2s, y3s, xx1[N2+j], xx2[N2+j]);
+               x10i = N2+j; x20i = N2+j;
+            }
+         }
+         /* my schedule simulation for y0 (group i=0) */
+         {
+            spx_word32_t acc0 = 0;
+            int nw = 0, term;
+            int s_arr[4*MQMF], s_idx[4*MQMF], s_sign[4*MQMF], s_cidx[4*MQMF];
+            x10i = N2-2; x20i = N2-2;
+            printf("SCHEDULE y0 trace:\n");
+            for (j = 0; j < M2; j += 2)
+            {
+               int x11i = N2-1+j, x21i = N2-1+j;
+               s_arr[nw]=0; s_idx[nw]=x11i; s_sign[nw]=1; s_cidx[nw]=2*j; nw++;
+               s_arr[nw]=1; s_idx[nw]=x21i; s_sign[nw]=-1; s_cidx[nw]=2*j; nw++;
+               s_arr[nw]=0; s_idx[nw]=x10i; s_sign[nw]=1; s_cidx[nw]=2*j; nw++;
+               s_arr[nw]=1; s_idx[nw]=x20i; s_sign[nw]=-1; s_cidx[nw]=2*j; nw++;
+               s_arr[nw]=0; s_idx[nw]=x11i; s_sign[nw]=1; s_cidx[nw]=2*j+2; nw++;
+               s_arr[nw]=1; s_idx[nw]=N2+j; s_sign[nw]=-1; s_cidx[nw]=2*j+2; nw++;
+               x10i = N2+j; x20i = N2+j;
+            }
+            for (term = 0; term < nw; term++)
+            {
+               int idx = s_idx[term]; /* lane 0: no lane offset */
+               int v = (s_arr[term] ? xx2[idx] : xx1[idx]);
+               acc0 += (int)s_sign[term] * a_loc[s_cidx[term]] * v;
+               printf("  term%d: %s[%d] sign=%+d a[%d]=%d v=%d -> acc0=%d\n",
+                      term, s_arr[term]?"xx2":"xx1", idx, s_sign[term],
+                      s_cidx[term], a_loc[s_cidx[term]], v, acc0);
+            }
+         }
+      }
       /* per-tap isolation on the first parameter set */
       if (pi == 0)
       {
@@ -207,7 +270,7 @@ int main(void)
          for (t = 0; t < MQMF; t++)
          {
             for (i = 0; i < MQMF; i++) aa[i] = 0;
-            aa[MQMF-1-t] = 12345;
+            aa[t] = 12345;
             for (i = 0; i < NFRAMES; i++) { x1[i] = (spx_word16_t)rnd16(); x2[i] = (spx_word16_t)rnd16(); }
             for (i = 0; i < MQMF; i++) { m1a[i] = (spx_word16_t)rnd16(); m1b[i] = m1a[i]; m2a[i] = (spx_word16_t)rnd16(); m2b[i] = m2a[i]; }
             qmf_synth_ref(x1, x2, aa, ya, NFRAMES, MQMF, m1a, m2a, stack);

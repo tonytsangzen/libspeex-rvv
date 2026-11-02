@@ -504,8 +504,8 @@ void qmf_synth(const spx_word16_t *x1, const spx_word16_t *x2, const spx_word16_
       N and M are multiples of 4 */
 {
 #ifdef _USE_RVV
-   /* RVV qmf_synth attempted (round 10) but not bit-exact; scalar kept.
-    * See test/qmf_diff.c and docs/perf-log.md round 10. */
+   rvv_qmf_synth(x1, x2, a, y, N, M, mem1, mem2, stack);
+   return;
 #endif
    int i, j;
    int M2, N2;
