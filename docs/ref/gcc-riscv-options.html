@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html>
+<!-- Created by GNU Texinfo 7.0dev, http://www.gnu.org/software/texinfo/ -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<!-- This file documents the use of the GNU compilers.
+
+Copyright © 1988-2026 Free Software Foundation, Inc.
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with the
+Invariant Sections being "Funding Free Software", the Front-Cover
+Texts being (a) (see below), and with the Back-Cover Texts being (b)
+(see below).  A copy of the license is included in the section entitled
+"GNU Free Documentation License".
+
+(a) The FSF's Front-Cover Text is:
+
+A GNU Manual
+
+(b) The FSF's Back-Cover Text is:
+
+You have freedom to copy and modify this GNU Manual, like GNU
+     software.  Copies published by the Free Software Foundation raise
+     funds for GNU development. -->
+<title>RISC-V Options (Using the GNU Compiler Collection (GCC))</title>
+
+<meta name="description" content="RISC-V Options (Using the GNU Compiler Collection (GCC))">
+<meta name="keywords" content="RISC-V Options (Using the GNU Compiler Collection (GCC))">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<link href="index.html" rel="start" title="Top">
+<link href="Indices.html" rel="index" title="Indices">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Target-Specific-Options.html" rel="up" title="Target-Specific Options">
+<link href="RL78-Options.html" rel="next" title="RL78 Options">
+<link href="PRU-Options.html" rel="prev" title="PRU Options">
+<style type="text/css">
+<!--
+a.copiable-link {visibility: hidden; text-decoration: none; line-height: 0em}
+kbd.key {font-style: normal}
+span.r {font-family: initial; font-weight: normal; font-style: normal}
+span:hover a.copiable-link {visibility: visible}
+ul.mark-bullet {list-style-type: disc}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="/texinfo-manuals.css">
+
+
+</head>
+
+<body lang="en_US">
+<div class="subsection-level-extent" id="RISC-V-Options">
+<div class="nav-panel">
+<p>
+Next: <a href="RL78-Options.html" accesskey="n" rel="next">RL78 Options</a>, Previous: <a href="PRU-Options.html" accesskey="p" rel="prev">PRU Options</a>, Up: <a href="Target-Specific-Options.html" accesskey="u" rel="up">Target-Specific Options</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Indices.html" title="Index" rel="index">Index</a>]</p>
+</div>
+<hr>
+<h4 class="subsection" id="RISC-V-Options-1"><span>3.20.41 RISC-V Options<a class="copiable-link" href="#RISC-V-Options-1"> &para;</a></span></h4>
+<a class="index-entry-id" id="index-RISC-V-Options"></a>
+
+<p>These command-line options are defined for RISC-V targets:
+</p>
+<dl class="table">
+<dt><a id="index-mbranch-cost-5"></a><span><code class="code">-mbranch-cost=<var class="var">n</var></code><a class="copiable-link" href="#index-mbranch-cost-5"> &para;</a></span></dt>
+<dd><p>Set the cost of branches to roughly <var class="var">n</var> instructions.
+</p>
+</dd>
+<dt><a id="index-mabi-6"></a><span><code class="code">-mabi=<var class="var">ABI-string</var></code><a class="copiable-link" href="#index-mabi-6"> &para;</a></span></dt>
+<dd><p>Specify integer and floating-point calling convention.  <var class="var">ABI-string</var>
+contains two parts: the size of integer types and the registers used for
+floating-point types.  For example &lsquo;<samp class="samp">-march=rv64ifd -mabi=lp64d</samp>&rsquo; means that
+&lsquo;<samp class="samp">long</samp>&rsquo; and pointers are 64-bit (implicitly defining &lsquo;<samp class="samp">int</samp>&rsquo; to be
+32-bit), and that floating-point values up to 64 bits wide are passed in F
+registers.  Contrast this with &lsquo;<samp class="samp">-march=rv64ifd -mabi=lp64f</samp>&rsquo;, which still
+allows the compiler to generate code that uses the F and D extensions but only
+allows floating-point values up to 32 bits long to be passed in registers; or
+&lsquo;<samp class="samp">-march=rv64ifd -mabi=lp64</samp>&rsquo;, in which no floating-point arguments are
+passed in registers.
+</p>
+<p>The default for this argument is system dependent; if you want a specific
+calling convention you should specify one explicitly.  The valid calling
+conventions are: &lsquo;<samp class="samp">ilp32</samp>&rsquo;, &lsquo;<samp class="samp">ilp32f</samp>&rsquo;, &lsquo;<samp class="samp">ilp32d</samp>&rsquo;, &lsquo;<samp class="samp">lp64</samp>&rsquo;,
+&lsquo;<samp class="samp">lp64f</samp>&rsquo;, and &lsquo;<samp class="samp">lp64d</samp>&rsquo;.  Some calling conventions are impossible to
+implement on some ISAs: for example, &lsquo;<samp class="samp">-march=rv32if -mabi=ilp32d</samp>&rsquo; is
+invalid because the ABI requires 64-bit values be passed in F registers, but F
+registers are only 32 bits wide.  There are also the &lsquo;<samp class="samp">ilp32e</samp>&rsquo; ABI that can
+only be used with the &lsquo;<samp class="samp">rv32e</samp>&rsquo; architecture and the &lsquo;<samp class="samp">lp64e</samp>&rsquo; ABI that
+can only be used with the &lsquo;<samp class="samp">rv64e</samp>&rsquo;.  Those ABIs are not well-specified at
+present, and are subject to change.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-fdiv"></a>
+<a id="index-mfdiv"></a><span><code class="code">-mfdiv</code><a class="copiable-link" href="#index-mfdiv"> &para;</a></span></dt>
+<dt><code class="code">-mno-fdiv</code></dt>
+<dd><p>Do or don&rsquo;t use hardware floating-point divide and square root instructions.
+This requires the F or D extensions for floating-point registers.  The default
+is to use them if the specified architecture has these instructions.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-fence-tso"></a>
+<a id="index-mfence-tso"></a><span><code class="code">-mfence-tso</code><a class="copiable-link" href="#index-mfence-tso"> &para;</a></span></dt>
+<dt><code class="code">-mno-fence-tso</code></dt>
+<dd><p>Do or don&rsquo;t use the &lsquo;<samp class="samp">fence.tso</samp>&rsquo; instruction, which is unimplemented on
+some processors (including those from T-Head).  If the &lsquo;<samp class="samp">fence.tso</samp>&rsquo;
+instruction is not available then a stronger fence is used instead.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-div-3"></a>
+<a id="index-mdiv-3"></a><span><code class="code">-mdiv</code><a class="copiable-link" href="#index-mdiv-3"> &para;</a></span></dt>
+<dt><code class="code">-mno-div</code></dt>
+<dd><p>Do or don&rsquo;t use hardware instructions for integer division.  This requires the
+M extension.  The default is to use them if the specified architecture has
+these instructions.
+</p>
+</dd>
+<dt><a id="index-misa-spec"></a><span><code class="code">-misa-spec=<var class="var">ISA-spec-string</var></code><a class="copiable-link" href="#index-misa-spec"> &para;</a></span></dt>
+<dd><p>Specify the version of the RISC-V Unprivileged (formerly User-Level)
+ISA specification generated code should conform to.  The possibilities
+for <var class="var">ISA-spec-string</var> are:
+</p><dl class="table">
+<dt><code class="code">2.2</code></dt>
+<dd><p>Produce code conforming to version 2.2.
+</p></dd>
+<dt><code class="code">20190608</code></dt>
+<dd><p>Produce code conforming to version 20190608.
+</p></dd>
+<dt><code class="code">20191213</code></dt>
+<dd><p>Produce code conforming to version 20191213.
+</p></dd>
+</dl>
+<p>The default is <samp class="option">-misa-spec=20191213</samp> unless GCC has been configured
+with <samp class="option">--with-isa-spec=</samp> specifying a different default version.
+</p>
+</dd>
+<dt><a id="index-march-11"></a><span><code class="code">-march=<span class="r">[</span><var class="var">ISA</var><span class="r">|</span><var class="var">Profile</var><span class="r">|</span><var class="var">Profile_ISA</var><span class="r">|</span><var class="var">processor-string</var><span class="r">]</span></code><a class="copiable-link" href="#index-march-11"> &para;</a></span></dt>
+<dd><p>Generate code for given RISC-V ISA or profile or a combination of them
+(e.g. &lsquo;<samp class="samp">rv64im</samp>&rsquo; &lsquo;<samp class="samp">rvi20u64</samp>&rsquo; &lsquo;<samp class="samp">rvi20u64_zbb</samp>&rsquo;).  The names of
+ISAs and profiles must be lower case.
+Examples include &lsquo;<samp class="samp">rv64i</samp>&rsquo;, &lsquo;<samp class="samp">rv32g</samp>&rsquo;,
+&lsquo;<samp class="samp">rv32e</samp>&rsquo;, &lsquo;<samp class="samp">rv32imaf</samp>&rsquo;, &lsquo;<samp class="samp">rva22u64</samp>&rsquo; and &lsquo;<samp class="samp">rva23u64</samp>&rsquo;.
+To combine a named profile with optional RISC-V ISA extensions,
+give the profile first and then append the extension name(s) using
+an underscore as a delimiter (e.g.
+&lsquo;<samp class="samp">rvi20u64_zca_zcb</samp>&rsquo; &lsquo;<samp class="samp">rva23u64_zacas</samp>&rsquo;).  Additionally, a special value
+&lsquo;<samp class="samp">help</samp>&rsquo; (<samp class="option">-march=help</samp>) is accepted to list all supported
+extensions.
+</p>
+<p><samp class="option">-march=unset</samp> causes the compiler to ignore any
+<samp class="option">-march=&hellip;</samp> options
+that appear earlier on the command line, behaving as if the option was never
+passed.  This is useful for ensuring that the architecture is taken from the
+<samp class="option">-mcpu</samp> option, and an error results if no <samp class="option">-mcpu</samp> option
+is given when <samp class="option">-march=unset</samp> is used.
+</p>
+<p><samp class="option">-march=native</samp> causes the compiler to work out the ISA of the
+machine it is running on.  It is only available on a native GNU/Linux
+compiler; anywhere else the value is rejected like any other unknown ISA
+string.  On a system whose cores are not all alike, such as one pairing
+fast and efficient cores, which of them the detected ISA describes is
+unspecified; write the ISA string out in full if it matters.  If the
+running machine cannot be identified the option is ignored, and the
+architecture is taken from <samp class="option">-mcpu</samp> or from the configured default
+as usual.
+</p>
+<p>The syntax of the ISA string is defined as follows:
+</p>
+<ul class="itemize mark-bullet">
+<li>The string must start with &lsquo;<samp class="samp">rv32</samp>&rsquo; or &lsquo;<samp class="samp">rv64</samp>&rsquo;, followed by
+&lsquo;<samp class="samp">i</samp>&rsquo;, &lsquo;<samp class="samp">e</samp>&rsquo;, or &lsquo;<samp class="samp">g</samp>&rsquo;, referred to as the base ISA.
+</li><li>The subsequent part of the string is a list of extension names.  Extension
+names can be categorized as multi-letter (e.g. &lsquo;<samp class="samp">zba</samp>&rsquo;) and single-letter
+(e.g. &lsquo;<samp class="samp">v</samp>&rsquo;).  Single-letter extensions can appear consecutively,
+but multi-letter extensions must be separated by underscores.
+</li><li>An underscore can appear anywhere after the base ISA.  It has no specific
+effect but is used to improve readability and can act as a separator.
+</li><li>Extension names may include an optional version number, following the
+syntax &lsquo;<samp class="samp">&lt;major&gt;p&lt;minor&gt;</samp>&rsquo; or &lsquo;<samp class="samp">&lt;major&gt;</samp>&rsquo;, (e.g. &lsquo;<samp class="samp">m2p1</samp>&rsquo; or
+&lsquo;<samp class="samp">m2</samp>&rsquo;).
+</li></ul>
+
+<p>Supported extensions are listed below:
+</p>
+
+
+
+<table class="multitable">
+<thead><tr><th width="25%">Extension Name</th><th width="15%">Supported Version</th><th width="60%">Description</th></tr></thead>
+<tbody><tr><td width="25%">&lsquo;<samp class="samp">g</samp>&rsquo;</td><td width="15%">-</td><td width="60%">General-purpose computing base extension; &lsquo;<samp class="samp">g</samp>&rsquo; expands to
+&lsquo;<samp class="samp">i</samp>&rsquo;, &lsquo;<samp class="samp">m</samp>&rsquo;, &lsquo;<samp class="samp">a</samp>&rsquo;, &lsquo;<samp class="samp">f</samp>&rsquo;, &lsquo;<samp class="samp">d</samp>&rsquo;, &lsquo;<samp class="samp">zicsr</samp>&rsquo; and
+&lsquo;<samp class="samp">zifencei</samp>&rsquo;.</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">e</samp>&rsquo;</td><td width="15%">2.0</td><td width="60%">Reduced base integer extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">i</samp>&rsquo;</td><td width="15%">2.0 2.1</td><td width="60%">Base integer extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">m</samp>&rsquo;</td><td width="15%">2.0</td><td width="60%">Integer multiplication and division extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">a</samp>&rsquo;</td><td width="15%">2.0 2.1</td><td width="60%">Atomic extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">f</samp>&rsquo;</td><td width="15%">2.0 2.2</td><td width="60%">Single-precision floating-point extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">d</samp>&rsquo;</td><td width="15%">2.0 2.2</td><td width="60%">Double-precision floating-point extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">c</samp>&rsquo;</td><td width="15%">2.0</td><td width="60%">Compressed extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Standard extension for bit manipulation functions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">v</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">h</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Hypervisor extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zic64b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Cache block size is 64 bytes</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zicbom</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Cache-block management extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zicbop</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Cache-block prefetch extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zicboz</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Cache-block zero extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ziccamoa</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Main memory supports all atomics in A</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ziccamoc</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Main memory supports compare-and-swap atomics</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ziccid</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Instruction/data coherence and consistency extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ziccif</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Main memory supports instruction fetch with atomicity requirement</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zicclsm</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Main memory supports misaligned loads/stores</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ziccrse</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Main memory supports forward progress on LR/SC sequences</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zicfilp</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Control-flow integrity landing pad extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zicfiss</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Control-flow integrity shadow stack extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zicntr</samp>&rsquo;</td><td width="15%">2.0</td><td width="60%">Standard extension for base counters and timers</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zicond</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Integer conditional operations extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zicsr</samp>&rsquo;</td><td width="15%">2.0</td><td width="60%">Control and status register access extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zifencei</samp>&rsquo;</td><td width="15%">2.0</td><td width="60%">Instruction-fetch fence extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zihintntl</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Non-temporal locality hints extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zihintpause</samp>&rsquo;</td><td width="15%">2.0</td><td width="60%">Pause hint extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zihpm</samp>&rsquo;</td><td width="15%">2.0</td><td width="60%">Standard extension for hardware performance counters</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zimop</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">May-be-operations extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zilsd</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Load/store pair instructions extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zmmul</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Integer multiplication extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">za128rs</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Reservation set size of 128 bytes</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">za64rs</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Reservation set size of 64 bytes</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zaamo</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Atomic memory operations extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zabha</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Byte and halfword atomic memory operations extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zacas</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Atomic compare-and-swap instructions extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zalasr</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Atomic load-acquire and store-release extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zalrsc</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Load-reserved/store-conditional subset of the A extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zawrs</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Wait-on-reservation-set extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zama16b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Misaligned loads, stores, and AMOs that are fully contained within a naturally-aligned 16-byte boundary are atomic</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zfa</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Additional floating-point extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zfbfmin</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimal BF16 support extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zfh</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Half-precision floating-point extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zfhmin</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimal half-precision floating-point extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zfinx</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Single-precision floating-point in integer registers extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zdinx</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Double-precision floating-point in integer registers extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zca</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Integer compressed instruction extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zcb</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Simple compressed instruction extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zcd</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Compressed double-precision floating point loads and stores extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zce</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Compressed instruction extensions for embedded processors</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zcf</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Compressed single-precision floating point loads and stores extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zcmop</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Compressed may-be-operations extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zcmp</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Compressed push pop extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zcmt</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Table jump instruction extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zclsd</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Compressed load/store pair instructions extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zba</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Address calculation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zbb</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Basic bit manipulation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zbc</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Carry-less multiplication extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zbkb</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Cryptography bit-manipulation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zbkc</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Cryptography carry-less multiply extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zbkx</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Cryptography crossbar permutation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zbs</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Single-bit operation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zk</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Standard scalar cryptography extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zkn</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">NIST algorithm suite extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zknd</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">AES Decryption extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zkne</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">AES Encryption extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zknh</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Hash function extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zkr</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Entropy source extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zks</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">ShangMi algorithm suite extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zksed</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">SM4 block cipher extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zksh</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">SM3 hash function extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zkt</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Data independent execution latency extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ztso</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Total store ordering extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvbb</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector basic bit-manipulation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvbc</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector carry-less multiplication extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zve32f</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector extensions for embedded processors</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zve32x</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector extensions for embedded processors</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zve64d</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector extensions for embedded processors</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zve64f</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector extensions for embedded processors</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zve64x</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector extensions for embedded processors</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvfbfmin</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector BF16 converts extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvfofp8min</samp>&rsquo;</td><td width="15%">0.2</td><td width="60%">Vector FP8 minimum extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvfbfwma</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector BF16 widening multiply/add extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvfh</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector half-precision floating-point extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvfhmin</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector minimal half-precision floating-point extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvkb</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector cryptography bit-manipulation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvkg</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector GCM/GMAC extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvkn</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector NIST Algorithm Suite extension, &lsquo;<samp class="samp">zvkn</samp>&rsquo; will expand to</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvknc</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector NIST Algorithm Suite with carry-less multiply extension, &lsquo;<samp class="samp">zvknc</samp>&rsquo;</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvkned</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector AES block cipher extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvkng</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector NIST Algorithm Suite with GCM extension, &lsquo;<samp class="samp">zvkng</samp>&rsquo; will expand</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvknha</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector SHA-2 secure hash extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvknhb</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector SHA-2 secure hash extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvks</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector ShangMi algorithm suite extension, &lsquo;<samp class="samp">zvks</samp>&rsquo; will expand</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvksc</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector ShangMi algorithm suite with carry-less multiplication extension,</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvksed</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector SM4 block cipher extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvksg</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector ShangMi algorithm suite with GCM extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvksh</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector SM3 secure hash extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvkt</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Vector data independent execution latency extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl1024b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extensions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl128b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extensions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl16384b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl2048b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extensions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl256b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extensions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl32768b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl32b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extensions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl4096b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extensions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl512b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extensions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl64b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extensions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl65536b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvl8192b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimum vector length standard extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zhinx</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Half-precision floating-point in integer registers extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zhinxmin</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Minimal half-precision floating-point in integer registers extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">zvabd</samp>&rsquo;</td><td width="15%">0.7</td><td width="60%">Vector absolute difference extension.</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">sdtrig</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Debug triggers extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">sha</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">The augmented hypervisor extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">shcounterenw</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Support writeable enables for any supported counter</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">shgatpa</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">SvNNx4 mode supported for all modes supported by satp</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">shlcofideleg</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Delegating LCOFI interrupts to VS-mode</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">shtvala</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">The htval register provides all needed values</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">shvstvala</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">The vstval register provides all needed values</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">shvstvecd</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">The vstvec register supports direct mode</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">shvsatpa</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">The vsatp register supports all modes supported by satp</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">smaia</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Advanced interrupt architecture extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">smcdeleg</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Machine-mode counter delegation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">smcntrpmf</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Cycle and instret privilege mode filtering</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">smctr</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Machine-mode control transfer records extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">smcsrind</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Machine-level indirect CSR access</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">smepmp</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">PMP enhancements for memory access and execution prevention on machine mode</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">smmpm</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Supervisor-mode pointer masking extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">smnpm</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Supervisor-mode pointer masking extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">smrnmi</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Resumable non-maskable interrupts</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">smstateen</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">State enable extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">smdbltrp</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Double trap extensions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ssaia</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Advanced interrupt architecture extension for supervisor mode</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ssccfg</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Supervisor-mode counter configuration extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ssccptr</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Main memory supports page table reads</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">sscofpmf</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Count overflow and filtering extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">sscounterenw</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Support writeable enables for any supported counter</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ssctr</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Supervisor-mode control transfer records extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">sscsrind</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Supervisor-mode indirect CSR access</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ssnpm</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Supervisor-mode pointer masking extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">sspm</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Supervisor-mode pointer masking extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ssqosid</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Supervisor-mode quality-of-service ID extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ssstateen</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Supervisor-mode state-enable extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">sstc</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Supervisor-mode timer interrupts extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">sstvala</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Stval provides all needed values</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">sstvecd</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Stvec supports direct mode</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ssstrict</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Unimplemented reserved encodings raise illegal instruction exceptions and no non-conforming extensions are present</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ssdbltrp</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Double trap extensions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">ssu64xl</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">UXLEN=64 must be supported</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">supm</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">User-mode pointer masking extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">svinval</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Fine-grained address-translation cache invalidation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">svnapot</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">NAPOT translation contiguity extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">svpbmt</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Page-based memory types extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">svrsw60t59b</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Page-table reserved-for-software bits 60-59 extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">svvptc</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Extension for obviating memory-management instructions after marking PTEs valid</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">svadu</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Hardware updating of A/D bits extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">svade</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Cause exception when hardware updating of A/D bits is disabled</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">svbare</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Satp mode bare is supported</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xcvalu</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Core-V miscellaneous ALU extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xcvbi</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Core-V immediate branch extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xcvelw</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Core-V event load word extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xcvmac</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Core-V multiply-accumulate extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xcvsimd</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Core-V SIMD extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xsfcease</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">SiFive CEASE instruction extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xsfvcp</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">SiFive VCIX vector coprocessor extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xsfvfnrclipxfqf</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">SiFive FP32-to-int8 ranged clip instructions</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xsfvqmaccdod</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">SiFive int8 matrix multiplication extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xsfvqmaccqoq</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">SiFive int8 matrix multiplication extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadba</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head address calculation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadbb</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head basic bit-manipulation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadbs</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head single-bit instructions extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadcmo</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head cache management operations extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadcondmov</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head conditional move extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadfmemidx</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head indexed memory operations for floating-point registers extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadfmv</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head double floating-point high-bit data transmission extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadint</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head acceleration interruption extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadmac</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head multiply-accumulate extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadmemidx</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head indexed memory operation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadmempair</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head two-GPR memory operation extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadsync</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head multi-core synchronization extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xtheadvector</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">T-head vector extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xmipscmov</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Mips conditional move extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xmipscbop</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">Mips prefetch extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xandesperf</samp>&rsquo;</td><td width="15%">5.0</td><td width="60%">Andes performance extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xandesbfhcvt</samp>&rsquo;</td><td width="15%">5.0</td><td width="60%">Andes bfloat16 conversion extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xandesvbfhcvt</samp>&rsquo;</td><td width="15%">5.0</td><td width="60%">Andes vector bfloat16 conversion extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xandesvsintload</samp>&rsquo;</td><td width="15%">5.0</td><td width="60%">Andes vector INT4 load extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xandesvpackfph</samp>&rsquo;</td><td width="15%">5.0</td><td width="60%">Andes vector packed FP16 extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xandesvdot</samp>&rsquo;</td><td width="15%">5.0</td><td width="60%">Andes vector dot product extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xsmtvdot</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">SpacemiT vector dot product extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xsmtvdotii</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">SpacemiT vector dot product II extension</td></tr>
+<tr><td width="25%">&lsquo;<samp class="samp">xxtvarith</samp>&rsquo;</td><td width="15%">1.0</td><td width="60%">XuanTie vector arith turbo extension</td></tr>
+</tbody>
+</table>
+
+<p>When <samp class="option">-march=</samp> is not specified, GCC uses the setting from
+<samp class="option">-mcpu</samp>.
+</p>
+<p>If both <samp class="option">-march</samp> and <samp class="option">-mcpu=</samp> are not specified, the default for
+this argument is system dependent; if you want a specific architecture
+extension, you should specify one explicitly.
+</p>
+<p>When the RISC-V specifications define an extension as depending on other
+extensions, GCC implicitly adds the dependent extensions to the enabled
+extension set if they weren&rsquo;t added explicitly.
+</p>
+
+
+
+<p>&lsquo;<samp class="samp">Core Name</samp>&rsquo;
+</p>
+</dd>
+<dt><a id="index-mcpu-8"></a><span><code class="code">-mcpu=<var class="var">processor-string</var></code><a class="copiable-link" href="#index-mcpu-8"> &para;</a></span></dt>
+<dd><p>Use architecture of and optimize the output for the given processor, specified
+by particular CPU name.  Permissible values for this option are:
+</p>
+
+<p>&lsquo;<samp class="samp">sifive-e20</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-e21</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-e24</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-e31</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-e34</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-e76</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-s21</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-s51</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-s54</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-s76</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-u54</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-u74</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-x280</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-p450</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-p550</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-p670</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-p870-d</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">thead-c906</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c908</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c908v</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c910</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c910v2</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c920</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c920v2</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c9501fdvt</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">tt-ascalon-x</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">tt-ascalon-xg</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xiangshan-nanhu</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xiangshan-kunminghu</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">mips-p8700</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-n22</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-n25</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-a25</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-nx25</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-ax25</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-a27</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-ax27</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-n225</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-d23</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-n45</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-nx45</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-a45</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-ax45</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">spacemit-x60</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">spacemit-x100</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">spacemit-a100</samp>&rsquo;.
+</p>
+<p>Note that <samp class="option">-mcpu</samp> does not override <samp class="option">-march</samp> or <samp class="option">-mtune</samp>.
+</p>
+
+
+
+<p>&lsquo;<samp class="samp">Tune Name</samp>&rsquo;
+</p>
+</dd>
+<dt><a id="index-mtune-11"></a><span><code class="code">-mtune=<var class="var">processor-string</var></code><a class="copiable-link" href="#index-mtune-11"> &para;</a></span></dt>
+<dd><p>Optimize the output for the given processor, specified by microarchitecture or
+particular CPU name.  Permissible values for this option are:
+</p>
+
+<p>&lsquo;<samp class="samp">generic</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">rocket</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-3-series</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-5-series</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-7-series</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-p400-series</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-p600-series</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-p550</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">sifive-p870-d</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">tt-ascalon-x</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">tt-ascalon-xg</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">thead-c906</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c908</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c908v</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c910</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c910v2</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c920</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c920v2</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xt-c9501fdvt</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xiangshan-nanhu</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">xiangshan-kunminghu</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">spacemit-x60</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">spacemit-x100</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">spacemit-a100</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">arc-v-rhx-100-series</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">generic-ooo</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">size</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">mips-p8700</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-25-series</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-23-series</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">andes-45-series</samp>&rsquo;,
+</p>
+<p>&lsquo;<samp class="samp">arc-v-rmx-100-series</samp>&rsquo;,
+</p>
+<p>and all valid options for <samp class="option">-mcpu=</samp>.
+</p>
+<p>When <samp class="option">-mtune=</samp> is not specified, GCC uses the setting from
+<samp class="option">-mcpu</samp>.  The default is &lsquo;<samp class="samp">generic</samp>&rsquo; if neither is specified.
+</p>
+<p><samp class="option">-mtune=native</samp> and <samp class="option">-mcpu=native</samp> identify the core the
+compiler is running on, subject to the same restrictions and the same
+caveat about unlike cores as <samp class="option">-march=native</samp> above.
+<samp class="option">-mcpu=native</samp> additionally selects the detected architecture.  A
+core the compiler has no hardware identification for leaves the tuning at
+its default rather than causing an error.
+</p>
+<p>The &lsquo;<samp class="samp">size</samp>&rsquo; choice is not intended for use by end-users.  This is used
+when <samp class="option">-Os</samp> is specified.  It overrides the instruction cost info
+provided by <samp class="option">-mtune=</samp>, but does not override the pipeline info.  This
+helps reduce code size while still giving good performance.
+</p>
+</dd>
+<dt><a id="index-mpreferred-stack-boundary"></a><span><code class="code">-mpreferred-stack-boundary=<var class="var">num</var></code><a class="copiable-link" href="#index-mpreferred-stack-boundary"> &para;</a></span></dt>
+<dd><p>Attempt to keep the stack boundary aligned to a 2 raised to <var class="var">num</var>
+byte boundary.  If <samp class="option">-mpreferred-stack-boundary</samp> is not specified,
+the default is 4 (16 bytes or 128-bits).
+</p>
+<p><strong class="strong">Warning:</strong> If you use this switch, then you must build all modules with
+the same value, including any libraries.  This includes the system libraries
+and startup modules.
+</p>
+</dd>
+<dt><a id="index-msmall-data-limit"></a><span><code class="code">-msmall-data-limit=<var class="var">n</var></code><a class="copiable-link" href="#index-msmall-data-limit"> &para;</a></span></dt>
+<dd><p>Put global and static data smaller than <var class="var">n</var> bytes into a special section
+(on some targets).
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-save-restore"></a>
+<a id="index-msave-restore"></a><span><code class="code">-msave-restore</code><a class="copiable-link" href="#index-msave-restore"> &para;</a></span></dt>
+<dt><code class="code">-mno-save-restore</code></dt>
+<dd><p>Do or don&rsquo;t use smaller but slower prologue and epilogue code that uses
+library function calls.  The default is to use fast inline prologues and
+epilogues.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-movcc"></a>
+<a id="index-mmovcc"></a><span><code class="code">-mmovcc</code><a class="copiable-link" href="#index-mmovcc"> &para;</a></span></dt>
+<dt><code class="code">-mno-movcc</code></dt>
+<dd><p>Do or don&rsquo;t produce branchless conditional-move code sequences even with
+targets that do not have specific instructions for conditional operations.
+If enabled, sequences of ALU operations are produced using base integer
+ISA instructions where profitable.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-inline-atomics"></a>
+<a id="index-minline-atomics"></a><span><code class="code">-minline-atomics</code><a class="copiable-link" href="#index-minline-atomics"> &para;</a></span></dt>
+<dt><code class="code">-mno-inline-atomics</code></dt>
+<dd><p>Do or don&rsquo;t use smaller but slower subword atomic emulation code that uses
+libatomic function calls.  The default is to use fast inline subword atomics
+that do not require libatomic.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-inline-strlen"></a>
+<a id="index-minline-strlen"></a><span><code class="code">-minline-strlen</code><a class="copiable-link" href="#index-minline-strlen"> &para;</a></span></dt>
+<dt><code class="code">-mno-inline-strlen</code></dt>
+<dd><p>Do or do not attempt to inline <code class="code">strlen</code> calls if possible.
+Inlining can only be done if the string is properly aligned
+and instructions for accelerated processing are available.
+The default is to inline <code class="code">strlen</code> calls.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-inline-strcmp"></a>
+<a id="index-minline-strcmp"></a><span><code class="code">-minline-strcmp</code><a class="copiable-link" href="#index-minline-strcmp"> &para;</a></span></dt>
+<dt><code class="code">-mno-inline-strcmp</code></dt>
+<dd><p>Do or do not attempt to inline <code class="code">strcmp</code> calls if possible.
+Inlining can only be done if the strings are properly aligned
+and instructions for accelerated processing are available.
+The default is to inline <code class="code">strcmp</code> calls.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-inline-strncmp"></a>
+<a id="index-minline-strncmp"></a><span><code class="code">-minline-strncmp</code><a class="copiable-link" href="#index-minline-strncmp"> &para;</a></span></dt>
+<dt><code class="code">-mno-inline-strncmp</code></dt>
+<dd><p>Do or do not attempt to inline <code class="code">strncmp</code> calls if possible.
+Inlining can only be done if the strings are properly aligned
+and instructions for accelerated processing are available.
+The default is to inline <code class="code">strncmp</code> calls.
+</p>
+</dd>
+<dt><a id="index-mstringop-strategy"></a><span><code class="code">-mstringop-strategy=<var class="var">strategy</var></code><a class="copiable-link" href="#index-mstringop-strategy"> &para;</a></span></dt>
+<dd><p>Specify a particular strategy for inlining string and memory operations.
+<var class="var">strategy</var> may be one of &lsquo;<samp class="samp">auto</samp>&rsquo;, &lsquo;<samp class="samp">libcall</samp>&rsquo;, &lsquo;<samp class="samp">scalar</samp>&rsquo;,
+or &lsquo;<samp class="samp">vector</samp>&rsquo;.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-shorten-memrefs"></a>
+<a id="index-mshorten-memrefs"></a><span><code class="code">-mshorten-memrefs</code><a class="copiable-link" href="#index-mshorten-memrefs"> &para;</a></span></dt>
+<dt><code class="code">-mno-shorten-memrefs</code></dt>
+<dd><p>Do or do not attempt to make more use of compressed load/store instructions by
+replacing a load/store of &rsquo;base register + large offset&rsquo; with a new load/store
+of &rsquo;new base + small offset&rsquo;.  If the new base gets stored in a compressed
+register, then the new load/store can be compressed.  Currently targets 32-bit
+integer load/stores only.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-strict-align-4"></a>
+<a id="index-mstrict-align-4"></a><span><code class="code">-mstrict-align</code><a class="copiable-link" href="#index-mstrict-align-4"> &para;</a></span></dt>
+<dt><code class="code">-mno-strict-align</code></dt>
+<dd><p>Do not or do generate unaligned memory accesses.  The default is set depending
+on whether the processor we are optimizing for supports fast unaligned access
+or not.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-scalar-strict-align"></a>
+<a id="index-mscalar-strict-align"></a><span><code class="code">-mscalar-strict-align</code><a class="copiable-link" href="#index-mscalar-strict-align"> &para;</a></span></dt>
+<dt><code class="code">-mno-scalar-strict-align</code></dt>
+<dd><p>Do not or do generate unaligned memory accesses.  The default is set depending
+on whether the processor we are optimizing for supports fast unaligned access
+or not.  This is an alias for <samp class="option">-mstrict-align</samp>.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-vector-strict-align"></a>
+<a id="index-mvector-strict-align"></a><span><code class="code">-mvector-strict-align</code><a class="copiable-link" href="#index-mvector-strict-align"> &para;</a></span></dt>
+<dt><code class="code">-mno-vector-strict-align</code></dt>
+<dd><p>Do not or do generate unaligned vector memory accesses.  The default is set
+to off unless the processor we are optimizing for explicitly supports
+element-misaligned vector memory access.
+</p>
+</dd>
+<dt><a id="index-mzilsd-word-align"></a><span><code class="code">-mzilsd-word-align</code><a class="copiable-link" href="#index-mzilsd-word-align"> &para;</a></span></dt>
+<dd><p>Allow Zilsd/Zclsd memory accesses to be generated when they are known to be
+4-byte aligned.
+</p>
+</dd>
+<dt><a id="index-mzilsd-strict-align"></a><span><code class="code">-mzilsd-strict-align</code><a class="copiable-link" href="#index-mzilsd-strict-align"> &para;</a></span></dt>
+<dd><p>Require Zilsd/Zclsd memory accesses to be naturally 8-byte aligned.
+</p>
+<p>The precedence among <samp class="option">-mzilsd-word-align</samp>,
+<samp class="option">-mzilsd-strict-align</samp>, <samp class="option">-mstrict-align</samp>,
+<samp class="option">-mno-strict-align</samp>, <samp class="option">-mscalar-strict-align</samp>, and
+<samp class="option">-mno-scalar-strict-align</samp> is determined by the last one specified.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-max-vectorization-1"></a>
+<a id="index-mmax-vectorization-1"></a><span><code class="code">-mmax-vectorization</code><a class="copiable-link" href="#index-mmax-vectorization-1"> &para;</a></span></dt>
+<dt><code class="code">-mno-max-vectorization</code></dt>
+<dd><p>Enable or disable an override to vectorizer cost model making vectorization
+always appear profitable.  Unlike <samp class="option">-fno-vect-cost-model</samp> or
+<samp class="option">-fvect-cost-model=unlimited</samp> this option does not turn off cost
+comparison between different vector modes.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mcmodel_003dmedlow"></a>
+<a id="index-mcmodel_003d-4"></a><span><code class="code">-mcmodel=medlow</code><a class="copiable-link" href="#index-mcmodel_003d-4"> &para;</a></span></dt>
+<dd><p>Generate code for the medium-low code model. The program and its statically
+defined symbols must lie within a single 2 GiB address range and must lie
+between absolute addresses &minus;2 GiB and +2 GiB. Programs can be statically
+or dynamically linked. This is the default code model unless GCC has been
+configured with <samp class="option">--with-cmodel=</samp> specifying a different default code
+model.
+</p>
+</dd>
+<dt><a id="index-mcmodel_003dmedany"></a><span><code class="code">-mcmodel=medany</code><a class="copiable-link" href="#index-mcmodel_003dmedany"> &para;</a></span></dt>
+<dd><p>Generate code for the medium-any code model. The program and its statically
+defined symbols must be within any single 2 GiB address range. Programs can be
+statically or dynamically linked.
+</p>
+<p>The code generated by the medium-any code model is position-independent, but is
+not guaranteed to function correctly when linked into position-independent
+executables or libraries.
+</p>
+</dd>
+<dt><a id="index-mcmodel_003dlarge-2"></a><span><code class="code">-mcmodel=large</code><a class="copiable-link" href="#index-mcmodel_003dlarge-2"> &para;</a></span></dt>
+<dd><p>Generate code for a large code model, which has no restrictions on size or
+placement of symbols.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-explicit-relocs-3"></a>
+<a id="index-mexplicit-relocs-3"></a><span><code class="code">-mexplicit-relocs</code><a class="copiable-link" href="#index-mexplicit-relocs-3"> &para;</a></span></dt>
+<dt><code class="code">-mno-explicit-relocs</code></dt>
+<dd><p>Use or do not use assembler relocation operators when dealing with symbolic
+addresses.  The alternative is to use assembler macros instead, which may
+limit optimization.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-relax-4"></a>
+<a id="index-mrelax-6"></a><span><code class="code">-mrelax</code><a class="copiable-link" href="#index-mrelax-6"> &para;</a></span></dt>
+<dt><code class="code">-mno-relax</code></dt>
+<dd><p>Take advantage of linker relaxations to reduce the number of instructions
+required to materialize symbol addresses. The default is to take advantage of
+linker relaxations.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-riscv-attribute"></a>
+<a id="index-mriscv-attribute"></a><span><code class="code">-mriscv-attribute</code><a class="copiable-link" href="#index-mriscv-attribute"> &para;</a></span></dt>
+<dt><code class="code">-mno-riscv-attribute</code></dt>
+<dd><p>Emit (do not emit) RISC-V attribute to record extra information into ELF
+objects.  This feature requires at least binutils 2.32.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-csr-check"></a>
+<a id="index-mcsr-check"></a><span><code class="code">-mcsr-check</code><a class="copiable-link" href="#index-mcsr-check"> &para;</a></span></dt>
+<dt><code class="code">-mno-csr-check</code></dt>
+<dd><p>Enables or disables the CSR checking.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-omit-leaf-frame-pointer-2"></a>
+<a id="index-momit-leaf-frame-pointer-2"></a><span><code class="code">-momit-leaf-frame-pointer</code><a class="copiable-link" href="#index-momit-leaf-frame-pointer-2"> &para;</a></span></dt>
+<dd><p>Don&rsquo;t keep the frame pointer in a register for leaf functions.  This
+avoids the instructions to save, set up and restore frame pointers and
+makes an extra register available in leaf functions.
+</p>
+</dd>
+<dt><a id="index-malign-data"></a><span><code class="code">-malign-data=<var class="var">type</var></code><a class="copiable-link" href="#index-malign-data"> &para;</a></span></dt>
+<dd><p>Control how GCC aligns variables and constants of array, structure, or union
+types.  Supported values for <var class="var">type</var> are &lsquo;<samp class="samp">xlen</samp>&rsquo; which uses x register
+width as the alignment value, and &lsquo;<samp class="samp">natural</samp>&rsquo; which uses natural alignment.
+&lsquo;<samp class="samp">xlen</samp>&rsquo; is the default.
+</p>
+</dd>
+<dt><a id="index-mbig-endian-9"></a><span><code class="code">-mbig-endian</code><a class="copiable-link" href="#index-mbig-endian-9"> &para;</a></span></dt>
+<dd><p>Generate big-endian code.  This is the default when GCC is configured for a
+&lsquo;<samp class="samp">riscv64be-*-*</samp>&rsquo; or &lsquo;<samp class="samp">riscv32be-*-*</samp>&rsquo; target.
+Support for RISC-V big-endian is experimental.  The ABI is not yet stable
+and could change in incompatible ways in future releases.
+</p>
+</dd>
+<dt><a id="index-mlittle-endian-9"></a><span><code class="code">-mlittle-endian</code><a class="copiable-link" href="#index-mlittle-endian-9"> &para;</a></span></dt>
+<dd><p>Generate little-endian code.  This is the default when GCC is configured for a
+&lsquo;<samp class="samp">riscv64-*-*</samp>&rsquo; or &lsquo;<samp class="samp">riscv32-*-*</samp>&rsquo; but not a &lsquo;<samp class="samp">riscv64be-*-*</samp>&rsquo; or
+&lsquo;<samp class="samp">riscv32be-*-*</samp>&rsquo; target.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mstack-protector-guard-reg-1"></a>
+<a class="index-entry-id" id="index-mstack-protector-guard-offset-2"></a>
+<a id="index-mstack-protector-guard-2"></a><span><code class="code">-mstack-protector-guard=<var class="var">guard</var></code><a class="copiable-link" href="#index-mstack-protector-guard-2"> &para;</a></span></dt>
+<dt><code class="code">-mstack-protector-guard-reg=<var class="var">reg</var></code></dt>
+<dt><code class="code">-mstack-protector-guard-offset=<var class="var">offset</var></code></dt>
+<dd><p>Generate stack protection code using canary at <var class="var">guard</var>.  Supported
+locations are &lsquo;<samp class="samp">global</samp>&rsquo; for a global canary or &lsquo;<samp class="samp">tls</samp>&rsquo; for per-thread
+canary in the TLS block.
+</p>
+<p>With the latter choice the options
+<samp class="option">-mstack-protector-guard-reg=<var class="var">reg</var></samp> and
+<samp class="option">-mstack-protector-guard-offset=<var class="var">offset</var></samp> furthermore specify
+which register to use as base register for reading the canary,
+and from what offset from that base register. There is no default
+register or offset as this is entirely for use within the Linux
+kernel.
+</p>
+</dd>
+<dt><a id="index-mtls-dialect_003ddesc-1"></a><span><code class="code">-mtls-dialect=desc</code><a class="copiable-link" href="#index-mtls-dialect_003ddesc-1"> &para;</a></span></dt>
+<dd><p>Use TLS descriptors as the thread-local storage mechanism for dynamic accesses
+of TLS variables.
+</p>
+</dd>
+<dt><a id="index-mtls-dialect_003dtrad"></a><span><code class="code">-mtls-dialect=trad</code><a class="copiable-link" href="#index-mtls-dialect_003dtrad"> &para;</a></span></dt>
+<dd><p>Use traditional TLS as the thread-local storage mechanism for dynamic accesses
+of TLS variables.  This is the default.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-unroll-only-small-loops"></a>
+<a id="index-munroll-only-small-loops"></a><span><code class="code">-munroll-only-small-loops</code><a class="copiable-link" href="#index-munroll-only-small-loops"> &para;</a></span></dt>
+<dt><code class="code">-mno-unroll-only-small-loops</code></dt>
+<dd><p>Controls conservative small loop unrolling.  It is enabled by default at
+<samp class="option">-O2</samp> and above.  When enabled, only loops whose RTL instruction
+count does not exceed a tune-specific threshold are unrolled, and the
+unroll factor is capped by a tune-specific parameter.  This gives better
+utilization of the instruction decoding pipeline without enlarging bigger
+loops.  You can disable it with <samp class="option">-mno-unroll-only-small-loops</samp>; it
+is also turned off when <samp class="option">-funroll-loops</samp> or
+<samp class="option">-funroll-all-loops</samp> is explicitly enabled, so that an explicit
+unrolling request applies to loops of any size.
+</p>
+</dd>
+<dt><a id="index-mrvv-vector-bits"></a><span><code class="code">-mrvv-vector-bits=<var class="var">value</var></code><a class="copiable-link" href="#index-mrvv-vector-bits"> &para;</a></span></dt>
+<dd><p>Specify how the number of bits for an RVV vector register, as taken from
+the <samp class="option">-march=</samp> option, is interpreted.
+The <var class="var">value</var> parameter is specified as a string keyword and may be one of
+&lsquo;<samp class="samp">scalable</samp>&rsquo; or &lsquo;<samp class="samp">zvl</samp>&rsquo;.  The default is &lsquo;<samp class="samp">scalable</samp>&rsquo;, which tells
+GCC to interpret the number as a minimum, while &lsquo;<samp class="samp">zvl</samp>&rsquo; tells GCC to use
+exactly the number of bits specified.
+</p>
+</dd>
+<dt><a id="index-mrvv-max-lmul"></a><span><code class="code">-mrvv-max-lmul=<var class="var">value</var></code><a class="copiable-link" href="#index-mrvv-max-lmul"> &para;</a></span></dt>
+<dd><p>This option allows explicit control over the maximum length multiplier (LMUL)
+used when generating code for the RISC-V Vector Extensions (RVV).
+The <var class="var">value</var> parameter is specified as a string keyword and may be
+one of &lsquo;<samp class="samp">m1</samp>&rsquo;, &lsquo;<samp class="samp">m2</samp>&rsquo;, &lsquo;<samp class="samp">m4</samp>&rsquo;, &lsquo;<samp class="samp">m8</samp>&rsquo;, or &lsquo;<samp class="samp">dynamic</samp>&rsquo;.  The
+default is &lsquo;<samp class="samp">m1</samp>&rsquo; for compatibility with existing hardware that does not
+support the other options.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-adjust-lmul-cost"></a>
+<a id="index-madjust-lmul-cost"></a><span><code class="code">-madjust-lmul-cost</code><a class="copiable-link" href="#index-madjust-lmul-cost"> &para;</a></span></dt>
+<dt><code class="code">-mno-adjust-lmul-cost</code></dt>
+<dd><p>This option adjusts the cost model used to schedule vector instructions to
+multiply the latency of instructions by the RVV length multiplier, LMUL.
+It is disabled by default.
+</p>
+</dd>
+<dt><a class="index-entry-id" id="index-mno-autovec-segment"></a>
+<a id="index-mautovec-segment"></a><span><code class="code">-mautovec-segment</code><a class="copiable-link" href="#index-mautovec-segment"> &para;</a></span></dt>
+<dt><code class="code">-mno-autovec-segment</code></dt>
+<dd><p>Enable or disable generation of vector segment load/store instructions.
+This option is enabled by default.
+</p></dd>
+</dl>
+
+</div>
+<hr>
+<div class="nav-panel">
+<p>
+Next: <a href="RL78-Options.html">RL78 Options</a>, Previous: <a href="PRU-Options.html">PRU Options</a>, Up: <a href="Target-Specific-Options.html">Target-Specific Options</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Indices.html" title="Index" rel="index">Index</a>]</p>
+</div>
+
+
+
+</body>
+</html>

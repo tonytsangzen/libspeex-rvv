@@ -1,0 +1,27 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "native",
+      "displayName": "Native host build (dev sanity checks)",
+      "binaryDir": "${sourceDir}/build/native",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "riscv64",
+      "displayName": "RISC-V 64 cross build, RVV enabled",
+      "binaryDir": "${sourceDir}/build/riscv64",
+      "toolchainFile": "${sourceDir}/cmake/toolchain-riscv64-linux.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "_USE_RVV": "ON",
+        "RVV_MARCH": "rv64gcv"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "native", "configurePreset": "native" },
+    { "name": "riscv64", "configurePreset": "riscv64" }
+  ]
+}

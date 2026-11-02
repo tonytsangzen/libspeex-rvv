@@ -1,0 +1,90 @@
+---
+name: rvv-optimization-loop
+description: 在 RISC-V 真机(SpacemiT X60/Bianbu)上对 libspeex 做 RVV 内核循环优化的标准流程与踩坑清单。当要新增 RVV 内核、真机 A/B bit-exact 验证、adb 部署测试、或遇到 vsetvl/intrinsics/交叉编译相关问题时使用。
+---
+
+# libspeex-rvv 真机优化循环
+
+目标设备:BPMIK102080640200(SpacemiT X60,rv64imafdcv RVV 1.0,VLEN=256,
+Bianbu Linux 2.1,非 Android)。工具链:Ubuntu 24.04 容器内
+gcc-riscv64-linux-gnu(gcc 13),`-march=rv64gcv` + 静态链接,adb 推送。
+
+## 标准循环(每轮一个内核)
+
+```bash
+RVV_KERNELS=ON ./scripts/device-test.sh build ab bench
+```
+
+1. 读 C 参考与 `fixed_generic.h` 宏定义,**先推导 bit-exact 论证**再写码。
+2. 内核放 `src/libspeex/rvv/<module>_rvv.h`,定义 `OVERRIDE_*` 宏;模块 `.c`
+   加 `#elif defined(_USE_RVV)` 分支。**头文件里的函数定义必须用同一个
+   `OVERRIDE_*` 宏包住**(否则做 bisect 注释宏时重复定义)。
+3. `build ab` → 设备端 A/B 全 PASS → `bench` → 把数字记进
+   `docs/perf-log.md`(对比"同轮 baseline",剔除顺序噪声)。
+4. 基线(baseline)永远不改动;性能对照用 `RVV_KERNELS=OFF`(只开
+   `-march` 的 auto-vec)——**对手是 gcc auto-vec,不是标量 C**。
+
+## 内核形状(最重要的经验)
+
+- **逐 entry"点积 + 每次redsum"= 平手**(第 1 轮教训)。redsum 延迟链
+  吃掉全部收益。要赢必须 **entry 并行**:一 lane 一 entry、`in[j]` 用
+  `vwmacc_vx` 广播、codebook 列用 `vlse16` 跨步加载、免 redsum
+  (vq_rvv.h 是范本)。
+- **每 entry 的 O(1) 修正放标量侧**(E 修正、符号翻转):每 entry 仅
+  1-2 条标量指令,且绕开 gcc-13 的 mask/merge intrinsics 语义坑
+  (vq_nbest_sign 的向量符号路径真机不 bit-exact,标量化后 PASS)。
+- 分块移位语义(如 `inner_prod` 每 4 样本 `>>6` 后再累加)必须逐块
+  复现:lane=块、跨步加载、`vsra` 后再归约。**先读宏再下结论**:
+  `MAC16_16` 是纯 int32 环绕加(结合律 mod 2^32,顺序无关 ⇒ 向量化安全),
+  但 `PSHR32` 有舍入项、`SUB16` 是截断减——一字之差全部重来。
+- IIR 反馈环(filters.c)是顺序依赖,常规向量化无解,别硬啃。
+
+## bit-exact 排障流程
+
+1. A/B 失败 → 注释单个 `OVERRIDE_*` 宏二分(重新 build+deploy+ab!)。
+2. 数值反例 → 写差分测试(qemu 里跑):参考 `test/inner_prod_diff.c`
+   (C 参考副本 vs 链接进 lib 的 RVV 版,随机+极端值,8 万组)。
+3. **真机 A/B 是最终裁判**:qemu(TCG)与 X60 硬件语义基本一致,但
+   未初始化变量/UB 只在真机上暴露为死循环或错误输出。
+
+## 踩坑清单(每条都真实付出过时间)
+
+### 设备/部署
+- **`ab` 子命令必须先 deploy**:改了源码但忘 deploy,会用板上旧二进制
+  "验证"——二分结论全部作废(device-test.sh 已强制 ab 前 deploy)。
+- 死循环进程会**残留板上打满 CPU**(load 3.0),重跑前
+  `adb shell pkill -9 -f speex_ab`。
+- macOS 无 `timeout` 命令;`adb shell` 的命令找不到时 `which` 先探。
+- 后台跑 device-test 时,**不要并行编辑源文件**——容器挂载读到的可能是
+  编辑中间态(报错位置完全对不上)。
+- 交叉 libc:ubuntu 容器 `--no-install-recommends` 会漏掉
+  `libc6-dev-riscv64-cross`(crt1.o/libc.a),静态链接报 cannot find
+  crt1.o;动态链接也缺 Scrt1.o。显式安装。
+- 静态 glibc 二进制在 Bianbu 上直接跑,免去 glibc 版本地狱;校验静态用
+  `readelf -l | grep INTERP`(容器里没有 `file` 命令)。
+
+### RVV intrinsics(gcc 13 为准)
+- `vredsum_vs_i32m2_i32m1(acc, zero, vl)` 参数序是 **(向量, 标量载体)**,
+  与 RVV C-API 文档相反;clang 相反。写注释,换编译器时搜 `vredsum`。
+- 泛型 `vmerge_vvm` 在 C 里分发失败(返回 int),用带后缀的
+  `vmerge_vvm_i32m2`。
+- **数组元素不能是 RVV 向量类型**(gcc-13 直接报错)——把向量列存进
+  标量 VLA 缓冲,用 `vle16` 重载。
+- 尽量避开 `vsm`(mask 存储)语义争议:转成 0/1 整数向量再 `vse32`。
+- `vsetvl` **必须放在循环体第一句、先于任何用 vl 的语句**。忘写 =
+  未初始化 vl → `n -= vl` 永不归零 → 设备 100% CPU 死循环,且差分测试
+  和 qemu 都可能"看起来能跑"。
+- `vwmacc_vx/vv`、`vsra`、`vncvt`、`vlse16`(stride 单位是**字节**)、
+  `vsext_vf2` 都是实测可靠的基础件;EXTRACT16 类截断用
+  `vsra + vncvt` 精确复现,别用 `vnclip`(受 vxrm 舍入模式影响)。
+
+### 脚本/bash
+- `${VAR:-default}` **不能对同一变量用两次**(第一次已赋值,交叉模式的
+  第二默认永远不生效)——分支里各自给默认。
+- 自写脚本的多子命令分发只取 `$1` 会静默吞掉后续参数(`build ab` 只跑
+  build),用 `for cmd in "$@"` 循环。
+
+## 收敛数据(X60,详见 docs/perf-log.md)
+
+4 轮后编码 e2e:wb q8 **-40%**、uwb q8 -35%、nb q8 -15%(解码未动)。
+第 4 轮起单轮增益 <2%,点积家族收敛;剩余热点为顺序 IIR 与 FFT。

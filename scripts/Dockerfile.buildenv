@@ -1,0 +1,9 @@
+# Build environment for cross-compiling libspeex-rvv to riscv64 and
+# running it under qemu-user. Used by scripts/device-test.sh (and reusable
+# by scripts/docker-cross.sh). Cached as a local image so the per-iteration
+# loop does not pay apt install every time.
+FROM ubuntu:24.04
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      build-essential cmake gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user ca-certificates && \
+    rm -rf /var/lib/apt/lists/*

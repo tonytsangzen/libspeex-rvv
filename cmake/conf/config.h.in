@@ -1,0 +1,33 @@
+/* Build configuration for the libspeex-rvv port.
+ *
+ * Processed by CMake (configure_file) into <build>/config.h. The same
+ * template drives the baseline reference build, so A/B comparisons always
+ * run with identical options.
+ */
+#ifndef SPEEX_CONFIG_H
+#define SPEEX_CONFIG_H
+
+#define SPEEX_MAJOR_VERSION 1
+#define SPEEX_MINOR_VERSION 2
+#define SPEEX_MICRO_VERSION 1
+#define SPEEX_EXTRA_VERSION "-rvv"
+#define SPEEX_VERSION "speex-1.2.1-rvv"
+
+/* Stack allocation via C99 variable-length arrays (fine for Linux targets). */
+#define VAR_ARRAYS 1
+
+/* FFT backend: KISS FFT (matches the upstream meson default). */
+#define USE_KISS_FFT 1
+
+/* Symbol export decoration; static/shared linking handled by the build. */
+#define EXPORT
+
+/* --- Options set from CMake --- */
+
+/* Fixed-point arithmetic: the target configuration for RISC-V. */
+#cmakedefine FIXED_POINT 1
+
+/* Floating-point arithmetic (mutually exclusive with FIXED_POINT). */
+#cmakedefine FLOATING_POINT 1
+
+#endif /* SPEEX_CONFIG_H */
