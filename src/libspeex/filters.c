@@ -241,6 +241,9 @@ spx_word16_t compute_rms16(const spx_word16_t *x, int len)
    }
    if (max_val>16383)
    {
+#ifdef _USE_RVV
+      spx_word32_t sum = rvv_sumsq_blocked(x, len, 1, 0);
+#else
       spx_word32_t sum=0;
       for (i=0;i<len;i+=4)
       {
@@ -251,6 +254,7 @@ spx_word16_t compute_rms16(const spx_word16_t *x, int len)
          sum2 = MAC16_16(sum2,SHR16(x[i+3],1),SHR16(x[i+3],1));
          sum = ADD32(sum,SHR32(sum2,6));
       }
+#endif
       return SHL16(spx_sqrt(DIV32(sum,len)),4);
    } else {
       spx_word32_t sum=0;
@@ -261,6 +265,9 @@ spx_word16_t compute_rms16(const spx_word16_t *x, int len)
          sig_shift=2;
       if (max_val < 2048)
          sig_shift=3;
+#ifdef _USE_RVV
+      sum = rvv_sumsq_blocked(x, len, sig_shift, 1);
+#else
       for (i=0;i<len;i+=4)
       {
          spx_word32_t sum2=0;
@@ -270,6 +277,7 @@ spx_word16_t compute_rms16(const spx_word16_t *x, int len)
          sum2 = MAC16_16(sum2,SHL16(x[i+3],sig_shift),SHL16(x[i+3],sig_shift));
          sum = ADD32(sum,SHR32(sum2,6));
       }
+#endif
       return SHL16(spx_sqrt(DIV32(sum,len)),3-sig_shift);
    }
 }
@@ -814,8 +822,12 @@ char *stack
       gain0 = MULT16_16_Q15(QCONST16(.6,15),MULT16_16_Q14(g1,gg1));
       gain1 = MULT16_16_Q15(QCONST16(.6,15),MULT16_16_Q14(g2,gg2));
    }
+#ifdef _USE_RVV
+   rvv_comb_update(new_exc, exc, iexc, iexc+nsf, gain0, gain1, nsf);
+#else
    for (i=0;i<nsf;i++)
       new_exc[i] = ADD16(exc[i], EXTRACT16(PSHR32(ADD32(MULT16_16(gain0,iexc[i]), MULT16_16(gain1,iexc[i+nsf])),8)));
+#endif
    /* FIXME: compute_rms16 is currently not quite accurate enough (but close) */
    new_ener = compute_rms16(new_exc, nsf);
    old_ener = compute_rms16(exc, nsf);
@@ -828,8 +840,12 @@ char *stack
       old_ener = new_ener;
    ngain = PDIV32_16(SHL32(EXTEND32(old_ener),14),new_ener);
 
+#ifdef _USE_RVV
+   rvv_gain_scale(new_exc, ngain, nsf);
+#else
    for (i=0;i<nsf;i++)
       new_exc[i] = MULT16_16_Q14(ngain, new_exc[i]);
+#endif
 #ifdef FIXED_POINT
    if (scaledown)
    {

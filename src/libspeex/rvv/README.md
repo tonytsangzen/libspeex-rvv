@@ -41,6 +41,7 @@ C intrinsics(`<riscv_vector.h>`,RVV 1.0)编写,编译期通过宏选择,与
 | 3-tap 基音增益搜索         | ltp.c             | 经 inner_prod 间接加速 ✅ |
 | iir/fir/联合滤波(转置 DF,vrgather 滑窗) | filters.c | `OVERRIDE_IIR_MEM16` `OVERRIDE_FIR_MEM16` `OVERRIDE_FILTER_MEM16` ✅ |
 | 分数基音插值               | filters.c interp_pitch(rvv 头文件在函数原位 include,复用 shift_filt 表) | ✅ |
+| multicomb 尾部(增益合成/缩放)+ compute_rms16 | filters.c(rvv/filters_rvv.h 助手,调用点 #ifdef 切换) | ✅ |
 | LSP 量化 / 权重            | lsp.c, quant_lsp.c| `OVERRIDE_LSP_QUANT` `OVERRIDE_LSP_WEIGHT_QUANT` ⬜ |
 | Chebyshev 多项式求值       | lsp.c             | `OVERRIDE_CHEB_POLY_EVA` ⬜ |
 | QMF 多相分解/合成          | filters.c qmf_*   | ⬜ |

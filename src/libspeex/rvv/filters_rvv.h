@@ -190,6 +190,87 @@ void filter_mem16(const spx_word16_t *x, const spx_coef_t *num, const spx_coef_t
 }
 #endif /* !DISABLE_ENCODER */
 
+/* --- multicomb tail + compute_rms16 helpers (decode enhancer) --- */
+
+/* new_exc[i] = ADD16(exc[i], EXTRACT16(PSHR32(gain0*iexc0[i] +
+ * gain1*iexc1[i], 8))). PSHR32 = (a + (1<<(shift-1))) >> shift
+ * (arithmetic); EXTRACT16 and ADD16 are truncating/wrapping 16-bit ops.
+ * All exact with widening MACs + shift + narrowing + wrap add. */
+static inline void rvv_comb_update(spx_word16_t *new_exc, const spx_word16_t *exc,
+                                   const spx_word16_t *iexc0, const spx_word16_t *iexc1,
+                                   spx_word16_t gain0, spx_word16_t gain1, int len)
+{
+   size_t vlmax = __riscv_vsetvlmax_e32m2();
+   vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
+   size_t off = 0, n = (size_t)len;
+   while (n > 0)
+   {
+      size_t vl = __riscv_vsetvl_e16m1(n);
+      vint16m1_t e0 = __riscv_vle16_v_i16m1(iexc0 + off, vl);
+      vint16m1_t e1 = __riscv_vle16_v_i16m1(iexc1 + off, vl);
+      vint32m2_t acc = __riscv_vwmacc_vx_i32m2(zero32, gain0, e0, vl);
+      acc = __riscv_vwmacc_vx_i32m2(acc, gain1, e1, vl);
+      acc = __riscv_vadd_vx_i32m2(acc, 1 << 7, vl);
+      acc = __riscv_vsra_vx_i32m2(acc, 8, vl);
+      vint16m1_t p16 = __riscv_vncvt_x_x_w_i16m1(acc, vl);
+      vint16m1_t out = __riscv_vadd_vv_i16m1(__riscv_vle16_v_i16m1(exc + off, vl), p16, vl);
+      __riscv_vse16_v_i16m1(new_exc + off, out, vl);
+      off += vl;
+      n -= vl;
+   }
+}
+
+/* new_exc[i] = MULT16_16_Q14(ngain, new_exc[i]) = (int16)((ngain*x[i]) >> 14) */
+static inline void rvv_gain_scale(spx_word16_t *x, spx_word16_t ngain, int len)
+{
+   size_t vlmax = __riscv_vsetvlmax_e32m2();
+   vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
+   size_t off = 0, n = (size_t)len;
+   while (n > 0)
+   {
+      size_t vl = __riscv_vsetvl_e16m1(n);
+      vint32m2_t prod = __riscv_vwmacc_vx_i32m2(zero32, ngain,
+            __riscv_vle16_v_i16m1(x + off, vl), vl);
+      prod = __riscv_vsra_vx_i32m2(prod, 14, vl);
+      __riscv_vse16_v_i16m1(x + off, __riscv_vncvt_x_x_w_i16m1(prod, vl), vl);
+      off += vl;
+      n -= vl;
+   }
+}
+
+/* Blocked sum-of-squares shared by compute_rms16: lane = 4-sample block
+ * (strided loads, same scheme as rvv_inner_prod), per-block >>6, wrap
+ * int32 adds — exact vs the scalar reference. pre_shift replicates
+ * SHR16 (up=0, arithmetic >>) / SHL16 (up=1, wrapping <<) exactly.
+ * Callers guarantee len % 4 == 0 (all libspeex callers do). */
+static inline spx_word32_t rvv_sumsq_blocked(const spx_word16_t *x, int len, int pre_shift, int up)
+{
+   size_t vlmax = __riscv_vsetvlmax_e32m2();
+   vint32m2_t acc = __riscv_vmv_v_x_i32m2(0, vlmax);
+   vint32m1_t zero = __riscv_vmv_v_x_i32m1(0, 1);
+   size_t vl, n = (size_t)len >> 2;
+   size_t off = 0;
+   while (n > 0)
+   {
+      size_t k;
+      vl = __riscv_vsetvl_e16m1(n);
+      vint32m2_t part = __riscv_vmv_v_x_i32m2(0, vlmax);
+      for (k = 0; k < 4; k++)
+      {
+         vint16m1_t w = __riscv_vlse16_v_i16m1(x + off + k, 4 * sizeof(spx_word16_t), vl);
+         vint16m1_t w2 = up ? __riscv_vsll_vx_i16m1(w, (unsigned int)pre_shift, vl)
+                            : __riscv_vsra_vx_i16m1(w, (unsigned int)pre_shift, vl);
+         part = __riscv_vwmacc_vv_i32m2(part, w2, w2, vl);
+      }
+      part = __riscv_vsra_vx_i32m2(part, 6, vl);
+      acc = __riscv_vadd_vv_i32m2(acc, part, vl);
+      off += 4 * vl;
+      n -= vl;
+   }
+   return (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(
+      __riscv_vredsum_vs_i32m2_i32m1(acc, zero, vlmax));
+}
+
 #endif /* FIXED_POINT */
 
 #endif /* SPEEX_FILTERS_RVV_H */

@@ -15,6 +15,7 @@
 | M3 | RVV: ltp 开环基音(inner_prod + pitch_xcorr) | ✅ 真机 bit-exact |
 | M3 | RVV: filters iir/fir/filter_mem16(转置 DF vrgather 滑窗) | ✅ 编码 -12~23%/轮,解码 -8~11% |
 | M3 | RVV: interp_pitch(解码增强器) | ✅ 解码再 -2~4% |
+| M3 | RVV: multicomb 尾部 + compute_rms16 | ✅ 解码再 -2.5~5.4%(解码累计 nb -19%) |
 | M3 | RVV: lsp/chebyshev、qmf、kiss_fft | ⬜ 剩余候选,预期 ≤5% e2e |
 | M4 | 全量回归 + 数据汇总 | ✅ 第 6 轮收敛:编码 wb q8 -47.3% / uwb q8 -42.9% / nb q8 -28.8%;解码 -10~14% |
 
