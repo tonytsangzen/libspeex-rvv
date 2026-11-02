@@ -47,6 +47,8 @@
 #include "filters_arm4.h"
 #elif defined (BFIN_ASM)
 #include "filters_bfin.h"
+#elif defined (_USE_RVV)
+#include "rvv/filters_rvv.h"
 #endif
 
 
@@ -601,6 +603,11 @@ const float shift_filt[3][7] = {{-0.011915f, 0.046995f, -0.152373f, 0.614108f, 0
 #endif
 #endif
 
+#ifdef _USE_RVV
+/* Included here (not at the top) so the RVV interp_pitch can see
+ * shift_filt above. */
+#include "rvv/interp_pitch_rvv.h"
+#else
 static int interp_pitch(
 spx_word16_t *exc,          /*decoded excitation*/
 spx_word16_t *interp,          /*decoded excitation*/
@@ -663,6 +670,7 @@ int len
    }
    return pitch-maxj+3;
 }
+#endif
 
 void multicomb(
 spx_word16_t *exc,          /*decoded excitation*/

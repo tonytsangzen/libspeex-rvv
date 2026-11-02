@@ -37,10 +37,14 @@ C intrinsics(`<riscv_vector.h>`,RVV 1.0)编写,编译期通过宏选择,与
 | 基音相关(4-lag 批量)     | ltp.c pitch_xcorr | `OVERRIDE_PITCH_XCORR` ✅ |
 | 码本响应/能量              | cb_search.c       | `OVERRIDE_COMPUTE_WEIGHTED_CODEBOOK` ✅ |
 | 目标更新(逐元素)         | cb_search.c       | `OVERRIDE_TARGET_UPDATE` ✅ |
-| 开环基音增益搜索           | ltp.c             | `OVERRIDE_OPEN_LOOP_NBEST_PITCH`(经 inner_prod/pitch_xcorr 间接加速)|
-| 3-tap 基音增益搜索         | ltp.c             | `OVERRIDE_PITCH_GAIN_SEARCH_3TAP_VQ`(经 inner_prod 间接加速)|
-| iir/fir 滤波               | filters.c         | `OVERRIDE_FILTER_MEM16` `OVERRIDE_FIR_MEM16` `OVERRIDE_COMPUTE_IMPULSE_RESPONSE`(顺序反馈环,难点)|
-| FFT                        | kiss_fft/kiss_fftr(经 fftwrap.c 调用)| — |
+| 开环基音增益搜索           | ltp.c             | 经 inner_prod/pitch_xcorr 间接加速 ✅ |
+| 3-tap 基音增益搜索         | ltp.c             | 经 inner_prod 间接加速 ✅ |
+| iir/fir/联合滤波(转置 DF,vrgather 滑窗) | filters.c | `OVERRIDE_IIR_MEM16` `OVERRIDE_FIR_MEM16` `OVERRIDE_FILTER_MEM16` ✅ |
+| 分数基音插值               | filters.c interp_pitch(rvv 头文件在函数原位 include,复用 shift_filt 表) | ✅ |
+| LSP 量化 / 权重            | lsp.c, quant_lsp.c| `OVERRIDE_LSP_QUANT` `OVERRIDE_LSP_WEIGHT_QUANT` ⬜ |
+| Chebyshev 多项式求值       | lsp.c             | `OVERRIDE_CHEB_POLY_EVA` ⬜ |
+| QMF 多相分解/合成          | filters.c qmf_*   | ⬜ |
+| FFT                        | kiss_fft/kiss_fftr(经 fftwrap.c 调用)| ⬜ |
 
 ## 硬性规则
 
@@ -69,4 +73,6 @@ C intrinsics(`<riscv_vector.h>`,RVV 1.0)编写,编译期通过宏选择,与
 | pitch_xcorr(4-lag 批量)   | ✅ | PASS | ~+1% |
 | compute_weighted_codebook  | ✅ | PASS | wb q8 单轮 -22.6% |
 | target_update              | ✅ | PASS | ~+1% |
-| filters / kiss_fft         | ⬜ | —    | 待做 |
+| iir/fir/filter_mem16       | ✅ | PASS | 单轮编码 -12~23%,解码 -8~11% |
+| interp_pitch(解码增强器) | ✅ | PASS | 解码再 -2~4% |
+| qmf_* / kiss_fft / lsp     | ⬜ | —    | 剩余候选,预期 ≤5% e2e |

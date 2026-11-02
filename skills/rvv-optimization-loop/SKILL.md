@@ -63,6 +63,22 @@ RVV_KERNELS=ON ./scripts/device-test.sh build ab bench
 - 静态 glibc 二进制在 Bianbu 上直接跑,免去 glibc 版本地狱;校验静态用
   `readelf -l | grep INTERP`(容器里没有 `file` 命令)。
 
+### 内核形状补充(第 5/6 轮)
+- 转置直接型滤波(mem[j]=mem[j+1]+coef[j]*x)用**寄存器滑窗**:维护
+  vstate(全 VLMAX、lane ≥ ord 恒 0 不变式),`vrgather(vstate, vid+1)`
+  做下滑——**vrgather 越界索引返 0 是规范保证的**,比 vslidedown 的
+  尾部语义可靠;全部操作跑满 VLMAX,无尾部歧义。范本 filters_rvv.h。
+- gcc-13 只有 `vid_v_u32m2`(无符号)且 vrgather 索引必须是
+  `vuint32m2_t`。
+- 每 entry 的标量修正(yi 的 SATURATE/PSHR)从 mem 数组读回即可:每样本
+  一次 40B vse32,换整个正确性简单性。
+- 覆盖 static 函数(如 interp_pitch)且依赖同文件的 static 表时,把
+  `#include "rvv/xxx_rvv.h"` 放在**函数原位**(表定义之后),不要放文件头。
+- 解码热点与编码不同:enhancer(multicomb/interp_pitch)只在解码路径,
+  编码不动是正常现象。
+- 板子 USB 瞬时掉线(adb device not found)偶发,`adb reconnect` 或重试
+  即可,构建产物仍有效。
+
 ### RVV intrinsics(gcc 13 为准)
 - `vredsum_vs_i32m2_i32m1(acc, zero, vl)` 参数序是 **(向量, 标量载体)**,
   与 RVV C-API 文档相反;clang 相反。写注释,换编译器时搜 `vredsum`。
