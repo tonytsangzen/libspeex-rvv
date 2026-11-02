@@ -35,12 +35,13 @@ do_build() {
    docker run --rm -v "$PWD":/work -w /work \
       -e BUILD_A="$BUILD_A" -e BUILD_B="$BUILD_B" -e RVV_MARCH=${RVV_MARCH:-rv64gcv} \
       -e RVV_KERNELS=${RVV_KERNELS:-ON} -e SPEEX_PROF=${SPEEX_PROF:-OFF} \
+      -e SPEEX_OPT_FLAGS="$SPEEX_OPT_FLAGS" \
       "$BUILDENV_IMAGE" bash -euc '
       set -e
       common=(-DCMAKE_BUILD_TYPE=Release
               -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-riscv64-linux.cmake
               -D_USE_RVV=ON -DRVV_KERNELS=${RVV_KERNELS:-ON} -DRVV_MARCH=$RVV_MARCH
-              -DSPEEX_PROF=${SPEEX_PROF:-OFF}
+              -DSPEEX_PROF=${SPEEX_PROF:-OFF} -DSPEEX_OPT_FLAGS="${SPEEX_OPT_FLAGS}"
               -DCMAKE_EXE_LINKER_FLAGS=-static)
       cmake -S . -B "$BUILD_A" "${common[@]}"
       cmake --build "$BUILD_A" -j"$(nproc)"
