@@ -37,6 +37,7 @@ C intrinsics(`<riscv_vector.h>`,RVV 1.0)编写,编译期通过宏选择,与
 | 基音相关(4-lag 批量)     | ltp.c pitch_xcorr | `OVERRIDE_PITCH_XCORR` ✅ |
 | 码本响应/能量              | cb_search.c       | `OVERRIDE_COMPUTE_WEIGHTED_CODEBOOK` ✅ |
 | 目标更新(逐元素)         | cb_search.c       | `OVERRIDE_TARGET_UPDATE` ✅ |
+| 增益码本搜索(9 项二次型) | ltp.c pitch_gain_search_3tap_vq | `OVERRIDE_PITCH_GAIN_SEARCH_3TAP_VQ` ✅ entry-并行 |
 | 开环基音增益搜索           | ltp.c             | 经 inner_prod/pitch_xcorr 间接加速 ✅ |
 | 3-tap 基音增益搜索         | ltp.c             | 经 inner_prod 间接加速 ✅ |
 | iir/fir/联合滤波(转置 DF,vrgather 滑窗) | filters.c | `OVERRIDE_IIR_MEM16` `OVERRIDE_FIR_MEM16` `OVERRIDE_FILTER_MEM16` ✅ |

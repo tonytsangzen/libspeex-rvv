@@ -62,6 +62,88 @@ spx_word32_t inner_prod(const spx_word16_t *x, const spx_word16_t *y, int len)
    return rvv_inner_prod(x, y, len);
 }
 
+/* pitch_gain_search_3tap_vq: entry-parallel evaluation of the 9-term
+ * quadratic form over the gain codebook (lanes = codebook entries),
+ * followed by a scalar argmin that replicates the reference's selection
+ * rule exactly (strict >, first-wins, gain_sum <= max_gain).
+ *
+ * Bit-exactness: the scalar interleaves MULT16_16_16 (int16*int16 -> int,
+ * then truncated to int16 by the enclosing MULT16_16 cast) with exact
+ * widening MACs into int32. Each term below reproduces that: vwmul for
+ * the truncated product, vncvt (low 16 bits), then a widening MAC with
+ * the C coefficient (negated where the reference SUBs). Wrap int32 adds
+ * are order-free. g[k] = ADD16(ptr[k], 32) wrapping in int16. */
+#define OVERRIDE_PITCH_GAIN_SEARCH_3TAP_VQ 1
+int pitch_gain_search_3tap_vq(
+  const signed char *gain_cdbk,
+  int                gain_cdbk_size,
+  spx_word16_t      *C16,
+  spx_word16_t       max_gain
+)
+{
+   size_t vlmax = __riscv_vsetvlmax_e32m2();
+   vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
+   vint16m1_t zero16 = __riscv_vmv_v_x_i16m1(0, vlmax);
+   spx_word32_t sums[128];
+   size_t off = 0, n = (size_t)gain_cdbk_size;
+   int best_cdbk = 0;
+   spx_word32_t best_sum = -VERY_LARGE32;
+   int i;
+
+   while (n > 0)
+   {
+      size_t vl = __riscv_vsetvl_e16m1(n);
+      size_t base4 = off << 2;
+      vint16m1_t g0 = __riscv_vadd_vx_i16m1(
+            __riscv_vwcvt_x_x_v_i16m1(__riscv_vlse8_v_i8mf2(gain_cdbk + base4 + 0, 4, vl), vl), 32, vl);
+      vint16m1_t g1 = __riscv_vadd_vx_i16m1(
+            __riscv_vwcvt_x_x_v_i16m1(__riscv_vlse8_v_i8mf2(gain_cdbk + base4 + 1, 4, vl), vl), 32, vl);
+      vint16m1_t g2 = __riscv_vadd_vx_i16m1(
+            __riscv_vwcvt_x_x_v_i16m1(__riscv_vlse8_v_i8mf2(gain_cdbk + base4 + 2, 4, vl), vl), 32, vl);
+      vint32m2_t sum = zero32;
+      vint16m1_t tmp;
+
+      /* sum += (g[k]*64)*C[k] for k=0..2 : tmp = trunc16(g*64) */
+      tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vx_i32m2(g0, 64, vl), vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, C16[0], tmp, vl);
+      tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vx_i32m2(g1, 64, vl), vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, C16[1], tmp, vl);
+      tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vx_i32m2(g2, 64, vl), vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, C16[2], tmp, vl);
+      /* sum -= (g0*g1)*C[3], (g2*g1)*C[4], (g2*g0)*C[5] :
+         tmp = trunc16(product) */
+      tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g0, g1, vl), vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[3]), tmp, vl);
+      tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g2, g1, vl), vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[4]), tmp, vl);
+      tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g2, g0, vl), vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[5]), tmp, vl);
+      /* sum -= (g0*g0)*C[6], (g1*g1)*C[7], (g2*g2)*C[8] */
+      tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g0, g0, vl), vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[6]), tmp, vl);
+      tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g1, g1, vl), vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[7]), tmp, vl);
+      tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g2, g2, vl), vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[8]), tmp, vl);
+
+      __riscv_vse32_v_i32m2(sums + off, sum, vl);
+      off += vl;
+      n -= vl;
+   }
+
+   /* scalar argmin with the reference's exact selection rule */
+   for (i = 0; i < gain_cdbk_size; i++)
+   {
+      spx_word16_t gain_sum = (spx_word16_t)gain_cdbk[4*i+3];
+      if (sums[i] > best_sum && gain_sum <= max_gain)
+      {
+         best_sum = sums[i];
+         best_cdbk = i;
+      }
+   }
+   return best_cdbk;
+}
+
 /* Batched pitch_xcorr: compute 4 lags per pass with independent
  * accumulators so the (serial-latency) reduction happens once per 4 lags
  * instead of once per lag, and the x[] strided loads are shared. Each lag

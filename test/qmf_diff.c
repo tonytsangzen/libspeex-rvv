@@ -275,11 +275,52 @@ int main(void)
             for (i = 0; i < MQMF; i++) { m1a[i] = (spx_word16_t)rnd16(); m1b[i] = m1a[i]; m2a[i] = (spx_word16_t)rnd16(); m2b[i] = m2a[i]; }
             qmf_synth_ref(x1, x2, aa, ya, NFRAMES, MQMF, m1a, m2a, stack);
             qmf_synth(x1, x2, aa, yb, NFRAMES, MQMF, m1b, m2b, stack);
-            for (i = 0; i < 2*NFRAMES; i++)
-               if (ya[i] != yb[i]) { printf("TAP-ISO MISMATCH t=%d i=%d ref=%d got=%d\n", t, i, ya[i], yb[i]); fails++; break; }
+            {
+               int bad = -1;
+               for (i = 0; i < 2*NFRAMES; i++)
+                  if (ya[i] != yb[i]) { bad = i; break; }
+               printf("TAP-ISO t=%d bad=%d\n", t, bad);
+               if (bad >= 0 && t < 4)
+               {
+                  printf("  ref y:"); for (i = 0; i < 8; i++) printf(" %d", ya[i]); printf("\n");
+                  printf("  got y:"); for (i = 0; i < 8; i++) printf(" %d", yb[i]); printf("\n");
+                  printf("  a:"); for (i = 0; i < 8; i++) printf(" %d", aa[i]); printf("\n");
+                  printf("  x1[0..3]:"); for (i = 0; i < 4; i++) printf(" %d", x1[i]); printf("\n");
+                  printf("  x2[0..3]:"); for (i = 0; i < 4; i++) printf(" %d", x2[i]); printf("\n");
+               }
+               if (bad >= 0) fails++;
+            }
          }
       }
    }
-   printf("%ld/%ld mismatches\n", fails, total);
+   /* per-tap isolation for qmf_synth: single-coefficient sweeps */
+   {
+      const int NFRAMES = 160;
+      const int MQMF = 24;
+      int t, k;
+      for (t = 0; t < MQMF; t++)
+      {
+         int bad = -1;
+         for (i = 0; i < MQMF; i++) aa[i] = 0;
+         aa[t] = 12345;
+         for (i = 0; i < NFRAMES; i++) { x1[i] = (spx_word16_t)rnd16(); x2[i] = (spx_word16_t)rnd16(); }
+         for (i = 0; i < MQMF; i++) { m1a[i] = (spx_word16_t)rnd16(); m1b[i] = m1a[i]; m2a[i] = (spx_word16_t)rnd16(); m2b[i] = m2a[i]; }
+         qmf_synth_ref(x1, x2, aa, ya, NFRAMES, MQMF, m1a, m2a, stack);
+         qmf_synth(x1, x2, aa, yb, NFRAMES, MQMF, m1b, m2b, stack);
+         for (i = 0; i < 2*NFRAMES; i++)
+            if (ya[i] != yb[i]) { bad = i; break; }
+         printf("TAP-ISO t=%d bad=%d\n", t, bad);
+         if (bad >= 0 && t < 4)
+         {
+            printf("  ref y[0..7]:"); for (k = 0; k < 8; k++) printf(" %d", ya[k]); printf("\n");
+            printf("  got y[0..7]:"); for (k = 0; k < 8; k++) printf(" %d", yb[k]); printf("\n");
+            printf("  x1[0..5]:"); for (k = 0; k < 6; k++) printf(" %d", x1[k]); printf("\n");
+            printf("  x2[0..5]:"); for (k = 0; k < 6; k++) printf(" %d", x2[k]); printf("\n");
+            printf("  m1[0..3]:"); for (k = 0; k < 4; k++) printf(" %d", m1a[k]); printf("\n");
+         }
+         if (bad >= 0) fails++;
+      }
+   }
+   printf("%ld/%ld mismatches (with tap-iso)\n", fails, total);
    return fails != 0;
 }

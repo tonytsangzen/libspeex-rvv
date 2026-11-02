@@ -18,7 +18,9 @@
 | M3 | RVV: multicomb 尾部 + compute_rms16 | ✅ 解码再 -2.5~5.4%(解码累计 nb -19%) |
 | M3 | RVV: qmf_decomp | ✅ 编码 wb -35% / uwb -37%(同会话口径) |
 | M3 | RVV: qmf_synth(调度驱动重写) | ✅ 解码 wb/uwb -16~18%,nb -19% |
-| M3 | RVV: lsp/chebyshev、kiss_fft | ⬜ 剩余候选,预期 ≤5% e2e |
+| M3 | RVV: pitch_gain_search_3tap_vq(增益码本) | ✅ 编码再 -7%(nb q8 340→316) |
+| M3 | RVV: lsp 根查找 | ⬜ 自适应顺序游走,bit-exact 向量化无解(已论证) |
+| M3 | RVV: kiss_fft | ⬜ 编解码路径零调用,无价值(已论证) |
 | M4 | 全量回归 + 数据汇总 | ✅ 第 6 轮收敛:编码 wb q8 -47.3% / uwb q8 -42.9% / nb q8 -28.8%;解码 -10~14% |
 
 > 完成一项更新本表;每个 M3 内核落地时在 PR/commit 说明里附

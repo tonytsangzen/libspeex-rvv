@@ -119,6 +119,15 @@ RVV_KERNELS=ON ./scripts/device-test.sh build ab bench
 - 宏展开务必逐字符读:`MULT16_32_Q14(a,b) = a·hi + ((a·lo)>>14)` 的
   移位只作用于低半段乘积,凭直觉写会错,A/B 门能抓住但浪费一轮。
 
+### 性能事故(第 13 轮)
+- **内核里的调试脚手架(SUMDIFF 逐 entry printf)未受 ref_debug 保护
+  (dbg 数组未填充→条件恒真)→ 每次 _vq 调用 ~64 次控制台 printf →
+  编码 780× 减速**。规则:调试代码验证完立即删除;bench 异常数量级
+  放大时先查 printf/日志 I/O。
+- 增益码本搜索(9 项二次型,码字为 lane)是 entry-并行的又一范例:
+  int8 跨步加载(vlse8 stride 4)+ vwmul/vncvt 截断乘 + vwmacc_vx,
+  argmin 标量复刻选择规则。
+
 ### 脚本/bash
 - `${VAR:-default}` **不能对同一变量用两次**(第一次已赋值,交叉模式的
   第二默认永远不生效)——分支里各自给默认。
