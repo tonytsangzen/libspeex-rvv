@@ -460,6 +460,10 @@ void compute_impulse_response(const spx_coef_t *ak, const spx_coef_t *awk1, cons
 /* Decomposes a signal into low-band and high-band using a QMF */
 void qmf_decomp(const spx_word16_t *xx, const spx_word16_t *aa, spx_word16_t *y1, spx_word16_t *y2, int N, int M, spx_word16_t *mem, char *stack)
 {
+#ifdef _USE_RVV
+   rvv_qmf_decomp(xx, aa, y1, y2, N, M, mem, stack);
+   return;
+#endif
    int i,j,k,M2;
    VARDECL(spx_word16_t *a);
    VARDECL(spx_word16_t *x);
@@ -499,6 +503,10 @@ void qmf_synth(const spx_word16_t *x1, const spx_word16_t *x2, const spx_word16_
       all odd x[i] are zero -- well, actually they are left out of the array now
       N and M are multiples of 4 */
 {
+#ifdef _USE_RVV
+   /* RVV qmf_synth attempted (round 10) but not bit-exact; scalar kept.
+    * See test/qmf_diff.c and docs/perf-log.md round 10. */
+#endif
    int i, j;
    int M2, N2;
    VARDECL(spx_word16_t *xx1);

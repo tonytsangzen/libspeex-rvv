@@ -271,6 +271,93 @@ static inline spx_word32_t rvv_sumsq_blocked(const spx_word16_t *x, int len, int
       __riscv_vredsum_vs_i32m2_i32m1(acc, zero, vlmax));
 }
 
+/* --- QMF polyphase split/synthesis (wideband band split/recombine) --- */
+
+/* qmf_decomp: lane k = output sample k (input step 2). Tap j reads
+ * x[2k+j] and x2[2k-j] (x2[t]=x[t+M-1]) — both stride-4-byte loads.
+ * y2's sign alternates with the loop tap parity (even: SUB, odd: ADD),
+ * folded into a pre-negated coefficient copy a2[j] = (j&1)? a[j] : -a[j]
+ * where a[j] is the REVERSED prototype (a[M-1-t]=aa[t]) — only the first
+ * M2 taps take part (polyphase half-band). Tail:
+ * EXTRACT16(SATURATE(PSHR32(y,15),32767)). */
+static void rvv_qmf_decomp(const spx_word16_t *xx, const spx_word16_t *aa, spx_word16_t *y1, spx_word16_t *y2, int N, int M, spx_word16_t *mem, char *stack)
+{
+   int i,j,M2;
+   VARDECL(spx_word16_t *a);
+   VARDECL(spx_word16_t *a2);
+   VARDECL(spx_word16_t *x);
+   spx_word16_t *x2;
+   size_t vlmax = __riscv_vsetvlmax_e32m2();
+   vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
+
+   ALLOC(a, M, spx_word16_t);
+   ALLOC(a2, M, spx_word16_t);
+   ALLOC(x, N+M-1, spx_word16_t);
+   x2=x+M-1;
+   M2=M>>1;
+   for (i=0;i<M;i++)
+      a[M-i-1]= aa[i];
+   for (j=0;j<M2;j++)
+      a2[j] = (j&1)? a[j] : -a[j];
+   for (i=0;i<M-1;i++)
+      x[i]=mem[M-i-2];
+   for (i=0;i<N;i++)
+      x[i+M-1]=SHR16(xx[i],1);
+   for (i=0;i<M-1;i++)
+      mem[i]=SHR16(xx[N-i-1],1);
+
+   {
+      size_t K = (size_t)N>>1;   /* output samples; N is even */
+      size_t off = 0, n = K;
+      while (n > 0)
+      {
+         size_t vl = __riscv_vsetvl_e16m1(n);
+         vint32m2_t acc1 = zero32, acc2 = zero32;
+         size_t base = off<<1;   /* input index i = 2k */
+         for (j=0;j<M2;j++)
+         {
+            vint16m1_t xl = __riscv_vlse16_v_i16m1(x + base + j, 4, vl);
+            vint16m1_t xr = __riscv_vlse16_v_i16m1(x2 + base - j, 4, vl);
+            vint16m1_t s = __riscv_vadd_vv_i16m1(xl, xr, vl);
+            vint16m1_t d = __riscv_vsub_vv_i16m1(xl, xr, vl);
+            acc1 = __riscv_vwmacc_vx_i32m2(acc1, a[j], s, vl);
+            acc2 = __riscv_vwmacc_vx_i32m2(acc2, a2[j], d, vl);
+         }
+         /* EXTRACT16(SATURATE(PSHR32(y,15),32767)) */
+         acc1 = __riscv_vadd_vx_i32m2(acc1, 1 << 14, vl);
+         acc2 = __riscv_vadd_vx_i32m2(acc2, 1 << 14, vl);
+         acc1 = __riscv_vsra_vx_i32m2(acc1, 15, vl);
+         acc2 = __riscv_vsra_vx_i32m2(acc2, 15, vl);
+         acc1 = __riscv_vmin_vx_i32m2(acc1, 32767, vl);
+         acc2 = __riscv_vmin_vx_i32m2(acc2, 32767, vl);
+         acc1 = __riscv_vmax_vx_i32m2(acc1, -32767, vl);
+         acc2 = __riscv_vmax_vx_i32m2(acc2, -32767, vl);
+         __riscv_vse16_v_i16m1(y1 + off, __riscv_vncvt_x_x_w_i16m1(acc1, vl), vl);
+         __riscv_vse16_v_i16m1(y2 + off, __riscv_vncvt_x_x_w_i16m1(acc2, vl), vl);
+         off += vl;
+         n -= vl;
+      }
+   }
+}
+
+/* qmf_synth: lane l = output group i=2l (4 contiguous outputs
+ * y[4l..4l+3]). Tap/window pairing from the scalar rolling-register
+ * loop, by tap t with pair p=t>>1:
+ *   even t: y0 += a[t]*(xx1[N2-1+p-i]-xx2[N2-1+p-i])
+ *           y2 += a[t]*(xx1[N2-2+p-i]-xx2[N2-2+p-i])
+ *   odd  t: y1 += a[t]*(xx1[N2-1+p-i]+xx2[N2-1+p-i])
+ *           y3 += a[t]*(xx1[N2-2+p-i]+xx2[N2-2+p-i])
+ * Only the first M2 taps participate (polyphase). The xx1/xx2 arrays are
+ * re-laid-out DESCENDING during setup (yyp[q]=xx1[N2+M2-2-q]) so every
+ * lane read is an ascending stride-4 load at base M2-1-p / M2-p. The
+ * scalar "multiply twice by the same coef" form equals the sum/diff form
+ * modulo 2^32 (wrap int32 adds, exact products). Tails:
+ * EXTRACT16(SATURATE32(PSHR32(y,15),32767)), stored via four stride-8
+ * stores (interleave). N2 must be a multiple of 2. */
+/* qmf_synth: an RVV version was attempted in round 10 but reverted
+ * (not bit-exact — see test/qmf_diff.c and docs/perf-log.md). The
+ * scalar reference remains in filters.c. */
+
 #endif /* FIXED_POINT */
 
 #endif /* SPEEX_FILTERS_RVV_H */
