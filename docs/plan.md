@@ -41,3 +41,38 @@
    CV1800B 后续型号、QEMU rv64gcv)。
 4. 性能指标以目标机 `bench_e2e` 为准;qemu 数据只作回归参考,
    不作为加速比结论。
+
+## 第 15 轮方案:CPU 能力探测驱动的点积家族重构(2026-11-03)
+
+### X60 能力探测(test/cpu_probe.c,真机实测)
+
+| 项目 | 实测 |
+|------|------|
+| 拓扑 | 8× SpacemiT X60 @1.6GHz(performance governor),每核 L1I/L1D 32KB 4-way 64B 行,L2 512KB 16-way 每 4 核簇 ×2,8GB DDR |
+| ISA | rv64imafdcv + zicbom/zicboz/zba/bb/bc/bs/zkt/zicntr/zicond;用户态仅 rdtime 可读(**rdcycle 非法指令**) |
+| VLEN | 256 bit 确认(qemu 默认 128——差分测试天然覆盖不同 VL 尾路径) |
+| 向量 MAC | 延迟 5 cyc/vec-op(e32m2 16 lane);吞吐上限 ≈1 vec-op/cyc(14~16 lane-MAC/cyc),需 ≥8 独立累加流;单链仅 1/5 利用率 |
+| 跨步加载 | **vlse16(stride 64B)= 38.7 cyc/vec-op,比 vle16(5 cyc)慢 ~8×** |
+| load+compute | 重叠有限(4 流 load+MAC ≈0.7 vec-load/cyc) |
+| DDR 拷贝 | ~5.3 GB/s(3.3 B/cyc),稳态;首触页 15ms/16MB |
+| 标量基线 | 4 链 mul-add ≈0.34 lane-MAC/cyc → 向量满利用率收益 ~40× |
+
+### 假设验证(probe 内 A/B,位精确对照)
+
+raw_dists 形状(e16m2 batch,len=20):
+- A 现状(vlse16 + 单累加链):**732 cyc/batch**
+- B 转置布局(vle16)+ 4 路分累加链:**213.6 cyc/batch = 3.4×**,两版
+  累加结果逐位相同(mod-2^32 加法结合性)。
+
+### 优化项(优先级)
+
+| 项 | 内容 | 预期 |
+|----|------|------|
+| P0-A | compute_weighted_codebook 输出列主序 resp2T(写 1 次换 8×nb_subvect 次读),vq_nbest/_sign raw_dists 改 vle16 unit load | 点积内核 ~2-3×;编码 −5~10%,解码 −8~15%(解码 split_cb/pitch 子树占比更高) |
+| P0-B | raw_dists/inner_prod 累加器 4 路分链(顺序交错,合并按 mod-2^32;bit-exact 已验证) | 与 A 叠加趋近 3.4× |
+| P1-C | P0 落地后重剖解码(multicomb 占 nb 解码 ~30%、interp_pitch ~19%),决定是否还有 ≥5% 块 | 视数据 |
+| P1-D | qemu 差分测试显式 `-cpu rv64,v=true,vlen=256`,与真机同 VL 尾路径 | 覆盖性 |
+| P2-E | 8 核流级并行(批转码场景,库外 API) | ~线性 ×8 |
+| P2-F | zicboz 大缓冲清零(exc 仅 40 样本,边际) | 暂缓 |
+
+收敛判据沿用:P0 落地后重剖,无 ≥5% 可向量化块且单轮增益 <2% 即收敛。
