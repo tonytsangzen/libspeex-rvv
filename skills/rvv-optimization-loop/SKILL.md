@@ -94,6 +94,23 @@ RVV_KERNELS=ON ./scripts/device-test.sh build ab bench
   `vsext_vf2` 都是实测可靠的基础件;EXTRACT16 类截断用
   `vsra + vncvt` 精确复现,别用 `vnclip`(受 vxrm 舍入模式影响)。
 
+### 真机剖析(第 7 轮沉淀)
+- 板上装不上 perf(源缺包)时,用 `-finstrument-functions`:CMake 开关
+  `SPEEX_PROF=ON`(test/prof.c,rdtime 计时,退出打印
+  `PROF <addr> <ticks> <calls>`),host 端 `nm <binary>` 符号化。
+- **符号化必须用实际运行的二进制**(bench_e2e ≠ speex_ab,布局不同,
+  错配会得到看似合理的错名,极难察觉)。
+- 计时用 `rdtime`(用户态 CSR,几十周期);**clock_gettime 在板上走
+  系统调用(~2µs),钩子开销直接淹没数据**(实测 2.6× 虚高)。
+- `adb shell` 不转发远端 stderr——重定向必须写在远端命令里
+  (`... 2>&1 >/dev/null`),写在 adb 外面只会得到空文件。
+- 自定义 CMake 开关经 docker 传递时,务必 `-e VAR=...` 显式透传
+  (容器内求值 `${VAR:-OFF}` 永远是 OFF)。
+- bench 加 `BENCH_PHASE=enc|dec` 分相位;解码剖析的样本里混着
+  prime encode,按符号区分。
+- 板子重启/桌面会话(GNOME)会抢 DDR 带宽:全体变慢且向量内核比值
+  被压缩,跨会话对比绝对值前先检查 `uptime`/负载/桌面进程。
+
 ### 脚本/bash
 - `${VAR:-default}` **不能对同一变量用两次**(第一次已赋值,交叉模式的
   第二默认永远不生效)——分支里各自给默认。

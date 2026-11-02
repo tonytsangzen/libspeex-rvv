@@ -97,38 +97,65 @@ int main(int argc, char **argv)
    }
    speex_bits_init(&bits);
 
-   for (rep = 0; rep < reps; rep++)
    {
-      double t0, t1;
-      t0 = now_sec();
-      for (i = 0; i < nb_frames; i++)
-      {
-         unsigned char *chunk = stream + (size_t)i * CHUNK_STRIDE;
-         speex_bits_reset(&bits);
-         speex_encode_int(enc, pcm + (size_t)i * frame_size, &bits);
-         chunk_lens[i] = speex_bits_write(&bits, (char *)chunk, CHUNK_STRIDE);
-      }
-      t1 = now_sec();
-      if (t1 - t0 < best_enc) best_enc = t1 - t0;
+      /* BENCH_PHASE=enc|dec limits the timed phase (profiling aid); the
+       * decode-only mode still runs one untimed encode to fill `stream`. */
+      const char *phase = getenv("BENCH_PHASE");
+      int do_enc = !phase || phase[0] != 'd';
+      int do_dec = !phase || phase[0] != 'e';
 
-      t0 = now_sec();
-      for (i = 0; i < nb_frames; i++)
+      if (!do_enc)
       {
-         unsigned char *chunk = stream + (size_t)i * CHUNK_STRIDE;
-         spx_int16_t out[1024];
-         speex_bits_read_from(&bits, (char *)chunk, chunk_lens[i]);
-         speex_decode_int(dec, &bits, out);
+         for (i = 0; i < nb_frames; i++)
+         {
+            unsigned char *chunk = stream + (size_t)i * CHUNK_STRIDE;
+            speex_bits_reset(&bits);
+            speex_encode_int(enc, pcm + (size_t)i * frame_size, &bits);
+            chunk_lens[i] = speex_bits_write(&bits, (char *)chunk, CHUNK_STRIDE);
+         }
       }
-      t1 = now_sec();
-      if (t1 - t0 < best_dec) best_dec = t1 - t0;
+
+      for (rep = 0; rep < reps; rep++)
+      {
+         double t0, t1;
+         if (do_enc)
+         {
+            t0 = now_sec();
+            for (i = 0; i < nb_frames; i++)
+            {
+               unsigned char *chunk = stream + (size_t)i * CHUNK_STRIDE;
+               speex_bits_reset(&bits);
+               speex_encode_int(enc, pcm + (size_t)i * frame_size, &bits);
+               chunk_lens[i] = speex_bits_write(&bits, (char *)chunk, CHUNK_STRIDE);
+            }
+            t1 = now_sec();
+            if (t1 - t0 < best_enc) best_enc = t1 - t0;
+         }
+
+         if (do_dec)
+         {
+            t0 = now_sec();
+            for (i = 0; i < nb_frames; i++)
+            {
+               unsigned char *chunk = stream + (size_t)i * CHUNK_STRIDE;
+               spx_int16_t out[1024];
+               speex_bits_read_from(&bits, (char *)chunk, chunk_lens[i]);
+               speex_decode_int(dec, &bits, out);
+            }
+            t1 = now_sec();
+            if (t1 - t0 < best_dec) best_dec = t1 - t0;
+         }
+      }
+
+      printf("mode=%s q=%d frames=%d frame_size=%d rate=%d reps=%d\n",
+             argv[1], quality, nb_frames, frame_size, rate, reps);
+      if (do_enc)
+         printf("encode: %8.2f us/frame, realtime x%7.1f\n",
+                best_enc / nb_frames * 1e6, (double)nb_frames * frame_size / rate / best_enc);
+      if (do_dec)
+         printf("decode: %8.2f us/frame, realtime x%7.1f\n",
+                best_dec / nb_frames * 1e6, (double)nb_frames * frame_size / rate / best_dec);
    }
-
-   printf("mode=%s q=%d frames=%d frame_size=%d rate=%d reps=%d\n",
-          argv[1], quality, nb_frames, frame_size, rate, reps);
-   printf("encode: %8.2f us/frame, realtime x%7.1f\n",
-          best_enc / nb_frames * 1e6, (double)nb_frames * frame_size / rate / best_enc);
-   printf("decode: %8.2f us/frame, realtime x%7.1f\n",
-          best_dec / nb_frames * 1e6, (double)nb_frames * frame_size / rate / best_dec);
 
    speex_bits_destroy(&bits);
    speex_encoder_destroy(enc);

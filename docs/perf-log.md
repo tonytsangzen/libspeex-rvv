@@ -127,3 +127,30 @@ bit-exact ALL PASS。
 
 **累计(X60 真机,vs 原始 baseline):编码 wb q8 -47.3% / uwb q8 -42.9% /
 nb q8 -28.8%;解码 nb -14% / wb -10%。**
+
+## 第 7 轮(2026-11-03):真机剖析(无新内核)
+
+板上无 perf 且 apt 源缺包,落地了 `-finstrument-functions` 剖析器:
+`SPEEX_PROF=ON` 构建(测试/prof.c,rdtime 计时,退出时打印每函数
+ticks),`nm` 符号化,`BENCH_PHASE=enc|dec` 分相位。修正符号化后
+(rdtime 版,注意含插桩开销):
+
+- **NB 编码**:pitch_search_3tap 子树 48%(内含 pitch_gain_search_3tap
+  39%、其 _vq 19%),open_loop 39%,split_cb_search 11% —— 其余为
+  已优化的 vq/inner_prod/pitch_xcorr。
+- **解码**:LSP↔LPC 变换链(lpc_to_lsp/lsp_to_lpc)与 multicomb 尾部
+  各占 ~30-44%(含嵌套),iir/fir/filter_mem16 已优化后占比很小,
+  qmf_synth 次之。
+
+**收敛结论(证据版)**:剩余热点由几十个 1-5K tick 的微小顺序/数值
+循环构成(LSP 根查找的 bisect+acos、多项式级联展开、multicomb 逐元素
+尾部),单点向量化预期 ≤5% e2e 且侵入最脆弱的数值代码。内核循环到此
+收官;后续方向:①解码 LSP 变换链整体重写(跨系数 lane 并行,中风险);
+②QMF 多相(跨输出样本 lane 并行,低风险小收益);③kiss_fft。
+
+### 环境测量警告
+
+板子当晚会话中重启过并进入 GNOME 桌面(initial-setup 向导),桌面渲染
+抢占 DDR 带宽:同代码复测全体 +60~85%,且 RVV 优化版受带宽挤压更明显
+(wb q8 A/B 比值 -47%→-27%)。跨天对比请先确认板上无桌面会话
+(`systemctl stop gdm3` 或拔显示器),同会话 A/B 相对值仍然有效。
