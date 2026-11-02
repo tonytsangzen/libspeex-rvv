@@ -128,6 +128,27 @@ RVV_KERNELS=ON ./scripts/device-test.sh build ab bench
   int8 跨步加载(vlse8 stride 4)+ vwmul/vncvt 截断乘 + vwmacc_vx,
   argmin 标量复刻选择规则。
 
+### 验证纪律事故(第 14 轮)
+- **新内核必须有直接差分测试**:e2e A/B 不能替代。第 14 轮
+  `rvv_gain_build_exc` 第二段调用把"j=from 处的绝对地址"传给了
+  "从 from 起算"的 src 形参(基址重复偏移),第二子段全读错——qemu
+  e2e 被跳过、真机 A/B 又因陈旧二进制假通过,最终被新写的
+  gshelp_diff 在真机抓出。内核落地与差分测试同 commit。
+- **build 失败会被管道掩盖 + ab 部署陈旧二进制**:device-test.sh 的
+  docker 退出码可被 grep/tail 吞掉;build 失败后 ab 照样 deploy 旧
+  二进制,连续 FAIL 全是假信号。ab 前先肉眼看 build 成功行
+  ("== build done =="),或 ab 脚本内硬校验产物时间戳。
+- **prof-on 污染基准**:-finstrument-functions 对调用密集路径虚高
+  40-70%(解码 74→43µs 仅为去插桩)。基准一律 SPEEX_PROF=OFF;
+  剖析(prof-on)与测速(prof-off)必须分开构建。
+- **差分测试驱动自身也会错**:对比缓冲区要严格分开(ref 用 buf、
+  被测用 buf2);曾把 RVV 调用写成与参考同缓冲,SW-MISMATCH 风暴
+  全是测试 bug。测试报错时先怀疑测试,再怀疑内核。
+- gcc-13 新坑:vmerge_vvm(op1,op2,m)=m?op2:op1(首参 FALSE 分支,
+  与规范相反);掩码类型 = vbool(SEW/LMUL);VARDECL 指针类型展开成
+  二级指针;内核级 R14_NO_* 编译开关可单内核真机二分(详见
+  docs/rvv-notes.md)。
+
 ### 脚本/bash
 - `${VAR:-default}` **不能对同一变量用两次**(第一次已赋值,交叉模式的
   第二默认永远不生效)——分支里各自给默认。
@@ -136,5 +157,6 @@ RVV_KERNELS=ON ./scripts/device-test.sh build ab bench
 
 ## 收敛数据(X60,详见 docs/perf-log.md)
 
-4 轮后编码 e2e:wb q8 **-40%**、uwb q8 -35%、nb q8 -15%(解码未动)。
-第 4 轮起单轮增益 <2%,点积家族收敛;剩余热点为顺序 IIR 与 FFT。
+14 轮后编码 e2e(同会话 A vs baseline,prof-off):wb q8 **-59%**、
+uwb q8 **-56%**、nb q8 **-41%**;解码 -16~19%。第 14 轮单轮增益
+(同会话 r13→r14 对照):q8 模式编码再 -12~16%,q2 模式 -3~6%。

@@ -489,6 +489,54 @@ static void rvv_qmf_synth(const spx_word16_t *x1, const spx_word16_t *x2, const 
 }
 
 
+/* normalize16: the max-abs scan is an order-free reduction (NEG32 wrap
+ * replicated with a masked negate), the shift-decision loop stays scalar so
+ * the sig_shift sequence is bit-identical, and the y[] store truncates via
+ * vncvt like EXTRACT16. */
+#ifndef R14_NO_NORM16
+#define OVERRIDE_NORMALIZE16 1
+int normalize16(const spx_sig_t *x, spx_word16_t *y, spx_sig_t max_scale, int len)
+{
+   int sig_shift = 0;
+   spx_sig_t max_val = 1;
+   {
+      size_t off = 0;
+      while (off < (size_t)len)
+      {
+         size_t vl = __riscv_vsetvl_e32m2((size_t)len - off);
+         vint32m2_t v = __riscv_vle32_v_i32m2(x + off, vl);
+         vint32m2_t neg = __riscv_vrsub_vx_i32m2(v, 0, vl);
+         vint32m2_t ax = __riscv_vmerge_vvm_i32m2(v, neg,
+               __riscv_vmslt_vx_i32m2_b16(v, 0, vl), vl);
+         vint32m1_t red = __riscv_vredmax_vs_i32m2_i32m1(ax,
+               __riscv_vmv_v_x_i32m1(-2147483647-1, 1), vl);
+         int m = __riscv_vmv_x_s_i32m1_i32(red);
+         if (m > max_val)
+            max_val = m;
+         off += vl;
+      }
+   }
+   while (max_val>max_scale)
+   {
+      sig_shift++;
+      max_val >>= 1;
+   }
+   {
+      size_t off = 0;
+      while (off < (size_t)len)
+      {
+         size_t vl = __riscv_vsetvl_e32m2((size_t)len - off);
+         vint32m2_t v = __riscv_vle32_v_i32m2(x + off, vl);
+         v = __riscv_vsra_vx_i32m2(v, sig_shift, vl);
+         __riscv_vse16_v_i16m1(y + off, __riscv_vncvt_x_x_w_i16m1(v, vl), vl);
+         off += vl;
+      }
+   }
+   return sig_shift;
+}
+#endif /* R14_NO_NORM16 */
+
+
 #endif /* FIXED_POINT */
 
 #endif /* SPEEX_FILTERS_RVV_H */

@@ -54,6 +54,7 @@
 #include "ltp_bfin.h"
 #elif defined (_USE_RVV)
 #include "rvv/math_rvv.h"
+#include "rvv/ltp_rvv.h"
 #endif
 
 #ifndef OVERRIDE_INNER_PROD
@@ -506,26 +507,37 @@ int scaledown
    SPEEX_MEMSET(exc, 0, nsf);
    for (i=0;i<3;i++)
    {
-      int j;
-      int tmp1, tmp3;
       int pp=pitch+1-i;
-      tmp1=nsf;
+      int tmp1=nsf;
       if (tmp1>pp)
          tmp1=pp;
-      for (j=0;j<tmp1;j++)
-         exc[j]=MAC16_16(exc[j],SHL16(gain[2-i],7),exc2[j-pp]);
-      tmp3=nsf;
+      int tmp3=nsf;
       if (tmp3>pp+pitch)
          tmp3=pp+pitch;
+      spx_word16_t g7=SHL16(gain[2-i],7);
+#if defined(_USE_RVV) && !defined(R14_NO_GSHELP)
+      if (tmp1>0)
+         rvv_gain_build_exc(exc, exc2-pp, 0, tmp1, g7);
+      if (tmp3>tmp1)
+         rvv_gain_build_exc(exc, exc2-pp-pitch, tmp1, tmp3, g7);
+#else
+      int j;
+      for (j=0;j<tmp1;j++)
+         exc[j]=MAC16_16(exc[j],SHL16(gain[2-i],7),exc2[j-pp]);
       for (j=tmp1;j<tmp3;j++)
          exc[j]=MAC16_16(exc[j],SHL16(gain[2-i],7),exc2[j-pp-pitch]);
+#endif
    }
+#if defined(_USE_RVV) && !defined(R14_NO_GSHELP)
+   rvv_gain_update_new_target(new_target, x[0], x[1], x[2], gain[0], gain[1], gain[2], nsf);
+#else
    for (i=0;i<nsf;i++)
    {
       spx_word32_t tmp = ADD32(ADD32(MULT16_16(gain[0],x[2][i]),MULT16_16(gain[1],x[1][i])),
                             MULT16_16(gain[2],x[0][i]));
       new_target[i] = SUB16(new_target[i], EXTRACT16(PSHR32(tmp,6)));
    }
+#endif
    err = inner_prod(new_target, new_target, nsf);
 
    return err;

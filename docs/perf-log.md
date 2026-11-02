@@ -273,3 +273,68 @@ ALL PASS。
 (基音扫描步长、LSP 根查找 bisect),bit-exact 向量化无解。
 附带收获:-O3/zvl 下 A/B 全过,证明现有代码无 UB 敏感性(有符号
 环绕依赖在 -O3 下保持环绕语义)。
+
+## 第 14 轮(2026-11-03,编码尾部清扫:open_loop/normalize16/gain 尾部/vq 向量尾部)
+
+第 13 轮后重剖析(NB enc):open_loop_nbest_pitch 17%(pitch_xcorr 仅
+占其 40%,其余为分支密集的 top-N 选择循环 + 能量递推 + scaledown 扫描)、
+pitch_gain_search_3tap 自体 ~16%、split_cb 自体 ~10%(其中 vq_nbest
+标量尾部比向量 raw_dists 还贵:WB 13.3% vs 5.8%)。
+
+本轮 4 组内核:
+- **open_loop_nbest_pitch 整体 override**:top-N 插入选择 ≡ "N 轮向量
+  argmax + 逐轮剔除"(严格大于保先到、叉乘比值比较均可精确复刻,任意
+  N 成立);能量递推保持标量滚动(C 每步有 clamp,非线性不可结合),
+  仅向量化逐 lag 平方项;饱和扫描/恢复向量化(z/2^16 环上加法结合性
+  论证见 rvv/ltp_rvv.h 头注)。
+- **normalize16 override**(max-abs 扫描 vredmax + 标量移位决策)。
+- **gain_search 尾部**:new_target 更新 + exc 重建逐元素向量化(源读
+  全在负偏移,无读写重叠)。
+- **vq_nbest/_sign N=1 向量尾部**:E 修正 + first-min argmin(逐 lane
+  running + 标量树,无 red 链);N>1 保持标量插入。
+
+**过程事故(本轮教训密度最高)**:
+1. **基址重复偏移 bug**:`rvv_gain_build_exc` 第二段调用把"j=tmp1 处
+   的地址"传给了"从 from 起算"的 src 形参,第二子段整体读错数据。
+   qemu e2e 因缓存路径问题被跳过、prof-on 真机 A/B 又是旧二进制"假
+   通过",最终靠**新写的专用差分测试在真机**抓出。教训:每个新内核
+   必须有直接差分测试;prof-on/off 与构建成败必须显式确认。
+2. **prof 污染口径**:-finstrument-functions 使调用密集路径虚高
+   40-70%,prof-on 会话测出的 A/B 比值完全失真。**基准一律 prof-off**。
+3. **构建失败被管道掩盖 + 陈旧二进制部署**:device-test.sh build 失败
+   但 ab 照样 deploy 旧二进制,连续多轮"FAIL"实为陈旧产物。ab 前必须
+   确认 build 成功输出。
+4. **测试驱动窗口错位**:open_loop 差分测试把 RVV 调用写在与参考同一
+   缓冲(sw 而非 sw2),SW-MISMATCH 风暴全是测试自身 bug。
+
+**gcc-13 新踩坑(rvv-notes 同步)**:
+- `vmerge_vvm(op1, op2, m)` = **m ? op2 : op1**——首参是 false 分支,
+  与 RVV 规范(vd = v0 ? vs1 : vs2)相反(按汇编操作数序 vs2,vs1)。
+- 掩码类型命名 = **vbool(SEW/LMUL)**:i32m2→vbool16_t,i16m2→vbool8_t。
+- VARDECL 指针类型陷阱:`VARDECL(spx_word32_t *energy)` 展开成二级
+  指针;别名指针须裸声明 `spx_word32_t *energy`。
+- 二分守卫:R14_NO_OPENLOOP / R14_NO_NORM16 / R14_NO_VQTAIL /
+  R14_NO_GSHELP(SPEEX_OPT_FLAGS 传 -D 即可单内核开关;define 必须
+  与函数体同守卫,否则 C 版被抑制且 RVV 版缺失→链接错)。
+
+**真机 A/B ALL PASS**;三个差分测试真机全零
+(gshelp 8400 / open_loop 14000 / vqtail 34560 组)。
+
+同会话 r13→r14 编码对照(严格口径,bench_r13 vs bench_a):
+nb q2 -5.6%、wb q2 -3.4%、uwb q2 -3.6%、
+nb q8 **-11.9%**、wb q8 **-16.2%**、uwb q8 **-13.1%**。
+
+同会话 A vs baseline(同轮口径):
+
+| 模式 | 质量 | 编码 us/frame | vs 同轮 baseline | 解码 us/frame | vs 同轮 baseline |
+|------|------|---------------|------------------|---------------|------------------|
+| nb | q2 | 206 | **-38.3%** | 43.0 | -18.9% |
+| nb | q8 | 279 | **-41.4%** | 44.0 | -19.2% |
+| wb | q2 | 284 | -37.0% | 91.4 | -16.4% |
+| wb | q8 | 497 | **-58.8%** | 94.5 | -17.2% |
+| uwb | q2 | 395 | -38.4% | 177.5 | -16.7% |
+| uwb | q8 | 610 | **-56.4%** | 181.8 | -16.9% |
+
+**累计(同会话口径):编码 nb q8 -41% / wb q8 -59% / uwb q8 -56%;
+解码 nb -19% / wb -17% / uwb -17%。**(解码本轮未动,比值与会话
+布局噪声一致;uwb dec 较第 11 轮 -18.6% 略收窄属布局彩票。)

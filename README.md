@@ -58,15 +58,15 @@ RUNNER="qemu-riscv64 -L /usr/riscv64-unknown-linux-gnu" ./test/run_ab.sh
 ./scripts/device-test.sh build ab bench   # 或分步:build / deploy / ab / bench
 ```
 
-结果(编码端到端,详见 docs/perf-log.md):
+结果(编码/解码 e2e,第 14 轮,详见 docs/perf-log.md):
 
 | 模式/质量 | 基线 | RVV 优化后 | 提升 |
 |---|---|---|---|
-| wb q8 | 1209 us/frame | 724 us/frame | **-40.1%** |
-| uwb q8 | 1402 | 915 | -34.7% |
-| nb q8 | 475 | 405 | -14.9% |
-
-解码路径暂未优化,保持逐字节 bit-exact。
+| wb q8 | 1206 us/frame | 497 us/frame | **-58.8%** |
+| uwb q8 | 1398 | 610 | **-56.4%** |
+| nb q8 | 476 | 279 | **-41.4%** |
+| wb q2 | 450 | 284 | -37.0% |
+| 解码 nb/wb/uwb | — | — | -16~19% |
 
 ## 日常开发流程
 
@@ -81,7 +81,8 @@ RUNNER="qemu-riscv64 -L /usr/riscv64-unknown-linux-gnu" ./test/run_ab.sh
 
 ## 当前状态
 
-第一轮循环优化已收敛:6 个内核落地(vq_nbest/_sign、inner_prod、
-pitch_xcorr、compute_weighted_codebook、target_update),X60 真机全部
-bit-exact,编码最高 -40%。剩余热点为顺序 IIR 滤波反馈环(filters)与
-FFT;解码端优化待启动。详见 `docs/progress.md` 与 `docs/perf-log.md`。
+14 轮循环优化已完成:18 个 override 点落地(vq、点积家族、滤波器组、
+qmf、基音全套、lsp_to_lpc、normalize16 等),X60 真机全部 bit-exact,
+编码最高 -59%。经剖析确认剩余热点(lsp 根查找自适应顺序游走、
+kiss_fft 零调用)均不可向量化或无价值,优化循环收敛。
+详见 `docs/progress.md` 与 `docs/perf-log.md`。

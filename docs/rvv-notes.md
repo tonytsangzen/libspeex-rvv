@@ -58,3 +58,29 @@ RVV intrinsics 里很多"等价"指令(vsmul、vnclip、vssra 的舍入模式、
 上游 per-arch 实现也可参考:baseline/libspeex/filters_sse.h、ltp_bfin.h
 等——它们展示了"如何替换 C 参考"(注意 SSE 是浮点路径,定点语义请
 对齐 C 代码而不是 SSE 代码)。
+
+## gcc-13 intrinsic 补充(第 14 轮)
+
+- **vmerge_vvm(op1, op2, m) = m ? op2 : op1**:首参是 FALSE 分支,
+  与规范 `vd = v0 ? vs1 : vs2` 相反——gcc 按汇编操作数序
+  (vmerge.vvm vd, vs2, vs1, v0)排参。用已知值的双分支单元测试验证。
+- **掩码类型 = vbool(SEW/LMUL)**:i32m2 → vbool16_t、i16m2 →
+  vbool8_t、i32m1 → vbool32_t。不是"每元素 1 bit 的 vboolSEW"。
+- 比较内建必须带 vl:vmslt_vv_i32m2_b16(a, b, vl) 三个参数缺一不可。
+- VARDECL 与指针别名:`VARDECL(spx_word32_t *energy)` 会把 `*` 重复
+  展开成二级指针;指向另一数组别名时须裸声明 `spx_word32_t *energy`。
+- vredmax/vredmin 的 (vs2 向量, vs1 载体) 顺序与 vmerge 相反,是
+  (vector, carrier),载体的 C 类型是 LMUL1(m1)。
+- 内核级二分守卫:rvv/ltp_rvv.h、rvv/filters_rvv.h、rvv/vq_rvv.h、
+  ltp.c 的第 14 轮内核均有 R14_NO_*(OPENLOOP/NORM16/VQTAIL/GSHELP)
+  编译开关,`SPEEX_OPT_FLAGS="-DR14_NO_X"` 可单独禁用任一内核做
+  真机 A/B 二分。守卫必须同时包住 OVERRIDE define 与函数体。
+
+## 验证纪律(第 14 轮事故驱动)
+
+- 每个新内核配**直接差分测试**(test/*_diff.c,qemu + 真机双跑),
+  e2e A/B 不能替代:第 14 轮的基址 bug 只被 gshelp_diff 抓到。
+- 真机基准一律 **SPEEX_PROF=OFF**:-finstrument-functions 对调用
+  密集路径虚高 40-70%,prof-on 的 A/B 比值失真。
+- ab 前**必须确认 build 成功**(device-test.sh 的 docker 退出码会被
+  管道掩盖;build 失败后 ab 会部署陈旧二进制并给出误导性 FAIL)。
