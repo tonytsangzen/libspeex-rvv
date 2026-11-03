@@ -17,10 +17,11 @@ cmake/      工具链文件 + config.h / speex_config_types.h 模板
 scripts/    build.sh、docker-cross.sh、device-test.sh(X60 真机 adb 循环)、
             Dockerfile.buildenv(缓存交叉构建环境)
 docs/       最终报告(final-report.md)、计划(plan.md)、RVV 编码要点(rvv-notes.md)、
-            逐轮性能日志(perf-log.md)、进度(progress.md);
+            逐轮性能日志(perf-log.md)、进度(progress.md)、
+            独立审查与响应(code-review-2026-11-03.md);
             docs/ref/ 为 RVV 参考资料库(V 规范、intrinsics、工具链选项、T-Head 实战等)
-test/       另含 7 个内核级差分测试(*_diff.c,qemu+真机双跑)
-            与 CPU 能力探针 cpu_probe.c
+test/       另含 7 个内核级差分测试(*_diff.c,已注册 CTest,qemu+真机双跑)、
+            CPU 能力探针 cpu_probe.c、尾部策略矩阵脚本 build/review/run-tail-matrix.sh
 skills/     rvv-optimization-loop:RVV 优化循环方法论与踩坑 skill
 ```
 
@@ -61,24 +62,25 @@ RUNNER="qemu-riscv64 -L /usr/riscv64-unknown-linux-gnu" ./test/run_ab.sh
 ./scripts/device-test.sh build ab bench   # 或分步:build / deploy / ab / bench
 ```
 
-最终结果(第 16 轮收敛,同会话 A vs baseline,完整数据见
+最终结果(第 18 轮,同会话 A vs baseline,完整数据见
 docs/final-report.md 与 docs/perf-log.md):
 
 | 模式/质量 | 编码基线 | 编码优化后 | 编码提升 | 解码基线 | 解码优化后 | 解码提升 |
 |---|---|---|---|---|---|---|
-| wb q8 | 1209.9 us/帧 | 474.3 | **-60.8%** | 114.2 | 92.4 | -19.1% |
-| uwb q8 | 1402.1 | 587.2 | **-58.1%** | 219.2 | 175.8 | -19.8% |
-| nb q8 | 475.2 | 277.5 | **-41.6%** | 54.0 | 42.3 | -21.7% |
-| wb q2 | 447.7 | 280.7 | -37.3% | 109.6 | 88.2 | -19.6% |
-| uwb q2 | 638.9 | 393.7 | -38.4% | 213.5 | 174.6 | -18.2% |
-| nb q2 | 333.1 | 205.7 | -38.3% | 52.6 | 41.2 | -21.7% |
+| wb q8 | 1207.0 us/帧 | 477.6 | **-60.4%** | 114.4 | 69.2 | **-39.6%** |
+| uwb q8 | 1397.7 | 591.0 | **-57.7%** | 218.6 | 107.4 | **-50.9%** |
+| nb q8 | 476.1 | 280.7 | -41.1% | 54.3 | 42.7 | -21.3% |
+| wb q2 | 449.5 | 279.0 | -37.9% | 109.7 | 64.8 | **-40.9%** |
+| uwb q2 | 640.9 | 389.7 | -39.2% | 213.3 | 102.4 | **-51.9%** |
+| nb q2 | 334.0 | 202.4 | -39.4% | 52.8 | 41.4 | -21.6% |
 
-单核实时率(X60 @1.6GHz):nb q8 编码 72×/解码 473× 实时;
-最重的 uwb q8 也有编码 34×/解码 114×。
+单核实时率(X60 @1.6GHz):nb q8 编码 72×/解码 468× 实时;
+最重的 uwb q8 也有编码 34×/解码 186×。
 
-位精确认证:真机 A/B 6 模式(含交叉解码)ALL PASS;7 个内核级差分
-测试共 **165,960 组随机向量 0 失配**(qemu VLEN=128 与真机 VLEN=256
-双环境)。
+位精确认证:真机 A/B 6 模式(含 aa/ab/ba 交叉解码)ALL PASS;
+7 个内核级差分测试共 **165,960 组随机向量 0 失配**;尾部策略毒化
+矩阵(qemu TA/MA 全 1 × VLEN128/256/512)**72/72 通过**;毒化模式
+端到端 A/B ALL PASS;CTest 7/7。
 
 ## 日常开发流程
 
@@ -93,13 +95,17 @@ docs/final-report.md 与 docs/perf-log.md):
 
 ## 当前状态
 
-**优化循环已收敛(16 轮)**:20 个 RVV override 点落地(vq 全家、点积
-家族、滤波器组、qmf、基音全套、lsp_to_lpc、normalize16、open_loop
-argmax、CPU 探测驱动的转置布局/分链累加等),X60 真机全部 bit-exact,
-编码最高 **-60.8%**、解码 -18~22%。剩余热点(lsp 根查找自适应顺序
-游走、kiss_fft 零调用、已优化内核残部)均不可向量化或无价值。
+**18 轮优化 + 1 轮独立审查响应**:21 个 RVV override 点落地(vq 全家、
+点积家族、滤波器组、QMF 固定形态、基音全套、lsp_to_lpc、normalize16、
+open_loop argmax、CPU 探测驱动的转置布局/分链累加等),X60 真机全部
+bit-exact,编码最高 **-60.4%**、解码最高 **-51.9%**。
 
-完整结论、逐轮数据与事故复盘见 **docs/final-report.md**;
-方法论与踩坑见 `skills/rvv-optimization-loop/`、`docs/rvv-notes.md`。
-后续可选路径(需项目决策):8 核流级并行的批处理(库外 API,~×8)、
-停桌面后的净环境基线重测。
+2026-11-03 独立审查(code-review-2026-11-03.md)指出的问题已全部
+修复:尾部策略 `_tu` 纪律(R1/R2/R3)、哨兵等值种子(R6)、ABS16 的
+INT16_MIN 漏检(R7)、自指 guard 静默失效 13 轮的 target_update(R9)、
+构建矩阵(R8)、测试与产物可追溯性(M1);审查 M2 的 QMF 固定形态
+(K2)已落地。能力推断按审查要求重测修正(R5:吞吐 ≈0.33-0.42
+vec-op/cyc、跨步 3.7×、向量/标量 ≈32×)。
+
+剩余可选路径:审查 K1(滤波器状态驻留寄存器)/K3(点积寄存器分配)
+预算制实验、8 核流级并行的批处理(库外 API)、停桌面净环境基线重测。
