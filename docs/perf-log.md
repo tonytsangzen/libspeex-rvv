@@ -642,3 +642,24 @@ dec q8 vs 全开;正 = 关闭后变慢 = 该内核贡献)**:
   (`__riscv_v=1000000`)与 intrinsics API 混为一谈——gcc 13.3 实为
   v0.11 API(`__riscv_v_intrinsic=11000`),并记录段元组类型缺失、
   vmerge 操作数序、_tu 可用性等实测事实。
+
+## 第 22 轮(2026-11-04,审查 M3:新工具链对照 + vlseg4 解禁实验)
+
+**gcc-14.2 全量对照(审查"至少一个新版本做编译与正确性对照"完成)**:
+- gcc-14.2 的 intrinsics API 为 v1.0(`__riscv_v_intrinsic=12000`),
+  **vmerge 操作数序与 gcc-13 实测一致**(m=true → 第二操作数)——
+  内核无跨版本反转风险(该风险曾按审查第 2 节标记);
+- 全量构建 0 错误(修复:bench_e2e 缺标准头文件,gcc-14 默认 C23
+  下隐式声明为错误——gcc-13 只是警告,属存量卫生问题);
+- CTest 8/8、毒化矩阵 84 组(4 策略 × 3 VLEN × 7 测试)全零、
+  e2e A/B ALL PASS;
+- 工具链注意:gcc-14 包不提供无后缀 riscv64-linux-gnu-gcc,
+  工具链 find_program 需要符号链接(build/review/gcc14-matrix.sh
+  已含该步骤)。
+
+**K3 解禁实验(vlseg4e16 vs 4×vlse16,stride-8B 密集变体)**:
+- 正确性 0 失配(40~640 长度);qemu 相对计时 **vlseg4 快 ~23%**
+  (101.3 → 78.2 ns/call,len=160);
+- 设备实测待补(真机在本轮中途再次掉线);采用前提:工具链升级到
+  gcc-14+(生产为 gcc-13,段元组类型缺失)——列为工具链升级时的
+  首选优化项,test/segdiff.c 已入库。

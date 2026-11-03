@@ -1,3 +1,8 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
 #ifdef SPEEX_PROF
 /* Defined by the library when SPEEX_PROF=ON (config.h keeps the builds in
  * sync; a weak data symbol broke static Mach-O linking — review R8). */
