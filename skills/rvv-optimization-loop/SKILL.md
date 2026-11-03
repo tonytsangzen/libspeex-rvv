@@ -214,3 +214,18 @@ RVV_KERNELS=ON ./scripts/device-test.sh build ab bench
 14 轮后编码 e2e(同会话 A vs baseline,prof-off):wb q8 **-59%**、
 uwb q8 **-56%**、nb q8 **-41%**;解码 -16~19%。第 14 轮单轮增益
 (同会话 r13→r14 对照):q8 模式编码再 -12~16%,q2 模式 -3~6%。
+
+### 调度解释器反模式(第 18 轮,审查 K2)
+- **运行时调度表 + 解释器循环是自找的间接层**:每项 5 次数组读 +
+  switch 的标量开销与向量 MAC 同量级;若项模式在编译期静态,直接
+  展开成固定循环(寄存器复用参考代码的复用)。本例内核内省去
+  5KB 调度表构建与 256 项解释,解码 wb/uwb e2e -25~42%。
+- **逐 lane 窗口索引的 +base 项在两处出现**(块首与循环内滚动更新)
+  时极易漏改一处——第一块 base=0 会掩盖块首正确性;差分测试的
+  "SYNTH MISMATCH 从第 17 输出开始、仅 acc2/acc3 错"模式直接指向
+  两处漏改,比读汇编快。
+- **helper 的早退守卫不能静默无输出**:形状不支持时必须回退到逐字
+  C 参考(与 filters 的 qmf_synth_c/iir_mem16_c 等同一模式)。
+
+### 脚本/bash""")
+open('skills/rvv-optimization-loop/SKILL.md','a').write('')
