@@ -2,20 +2,20 @@
  *
  * The scalar body keeps an int32 state array updated per sample:
  *   mem[j] = mem[j+1] + coef[j]*x_i   (j < ord-1),  mem[ord-1] = coef[ord-1]*x_i
- * i.e. a one-lane shift of mem plus a coefficient product — no reduction,
- * so it vectorizes as one lane per tap:
- *   vstate = vrgather(vstate, vidx+1) + vwmacc(zero, x_i, vcoef)
- * with vrgather's spec-guaranteed zero for out-of-range indices providing
- * the "mem[ord] = 0" the scalar code implies.
+ * i.e. a one-lane shift of mem plus a coefficient product. Round 19
+ * (review K1) keeps the state in registers for the whole call:
+ *   vstate = vslide1down(vstate, 0, ord) + vwmacc(x_i, vcoef)
+ * vslide1down moves every lane down one (lane j = old state[j+1]) and
+ * inserts 0 at lane ord-1 — the same result as the old vrgather(vidx+1)
+ * over a zero-tailed vector, without the per-sample 40-byte mem store +
+ * mem[0] reload (state[0] is read with vmv.x.s).
  *
- * All vector ops run at full VLMAX (no tail-agnostic lanes anywhere), and
- * the invariant "vstate lanes >= ord are 0" holds by construction: the
- * coefficient vector is zero-padded, the shifted vector slides the zero
- * block down one lane, and lane VLMAX-1 is vrgather-zeroed. The per-sample
- * scalar fixups (yi = EXTRACT16(SATURATE(x + PSHR32(mem[0], LPC_SHIFT),
- * 32767))) replicate arch.h/fixed_generic.h macros verbatim; mem[0] is
- * read back through memory each sample (one 40-byte store, keeps the
- * caller's mem coherent).
+ * All vector ops run at VL=ord (<= VLMAX; ord is 10 or fewer in every
+ * libspeex path), so no tail-agnostic lane is ever read; the initial
+ * vslideup is _tu against a zero vector. The per-sample scalar fixups
+ * (yi = EXTRACT16(SATURATE(x + PSHR32(state[0], LPC_SHIFT), 32767)))
+ * replicate arch.h/fixed_generic.h macros verbatim, and the caller's mem
+ * is written back once at the end.
  *
  * ord must be <= VLMAX (10 in all libspeex code paths, VLMAX=16 at
  * VLEN=256); scalar copies of the C reference cover anything larger.
@@ -87,27 +87,24 @@ void iir_mem16(const spx_word16_t *x, const spx_coef_t *den, spx_word16_t *y, in
       return;
    }
    {
-      vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
-      vint16m1_t zero16 = __riscv_vmv_v_x_i16m1(0, vlmax);
-      /* _tu: lanes >= vl keep vd (=zero32/zero16), so the zero tail the
-       * VLMAX-wide vrgather/MAC reads below is guaranteed, not incidental
-       * (review R2). */
-      vint16m1_t vden = __riscv_vslideup_vx_i16m1_tu(zero16,
-            __riscv_vle16_v_i16m1(den, vl_ord), 0, vl_ord);
-      vuint32m2_t vidx = __riscv_vadd_vx_u32m2(__riscv_vid_v_u32m2(vlmax), 1, vlmax);
-      vint32m2_t vstate = __riscv_vslideup_vx_i32m2_tu(zero32,
+      /* Review K1: state stays in registers (no per-sample mem store +
+       * reload round trip); all activity runs at VL=ord; state[0] is read
+       * with vmv.x.s; vslide1down performs the down-shift with a zero
+       * entering at the top (lane j gets state[j+1], lane ord-1 gets 0 —
+       * identical to the vrgather(vidx+1) + OOB-zero rule). */
+      vint16m1_t vden = __riscv_vle16_v_i16m1(den, vl_ord);
+      vint32m2_t vstate = __riscv_vslideup_vx_i32m2_tu(
+            __riscv_vmv_v_x_i32m2(0, vlmax),
             __riscv_vle32_v_i32m2(mem, vl_ord), 0, vl_ord);
 
       for (i = 0; i < N; i++)
       {
+         spx_word32_t s0 = __riscv_vmv_x_s_i32m2_i32(vstate);
          spx_word16_t yi, nyi;
-         vint32m2_t prod, shifted;
-         __riscv_vse32_v_i32m2(mem, vstate, vl_ord);
-         yi = EXTRACT16(SATURATE(ADD32(EXTEND32(x[i]), PSHR32(mem[0], LPC_SHIFT)), 32767));
+         yi = EXTRACT16(SATURATE(ADD32(EXTEND32(x[i]), PSHR32(s0, LPC_SHIFT)), 32767));
          nyi = NEG16(yi);
-         prod = __riscv_vwmacc_vx_i32m2(zero32, (int16_t)nyi, vden, vlmax);
-         shifted = __riscv_vrgather_vv_i32m2(vstate, vidx, vlmax);
-         vstate = __riscv_vadd_vv_i32m2(shifted, prod, vlmax);
+         vstate = __riscv_vslide1down_vx_i32m2(vstate, 0, vl_ord);
+         vstate = __riscv_vwmacc_vx_i32m2(vstate, (int16_t)nyi, vden, vl_ord);
          y[i] = yi;
       }
       __riscv_vse32_v_i32m2(mem, vstate, vl_ord);
@@ -127,23 +124,19 @@ void fir_mem16(const spx_word16_t *x, const spx_coef_t *num, spx_word16_t *y, in
       return;
    }
    {
-      vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
-      vint16m1_t zero16 = __riscv_vmv_v_x_i16m1(0, vlmax);
-      vint16m1_t vnum = __riscv_vslideup_vx_i16m1_tu(zero16,
-            __riscv_vle16_v_i16m1(num, vl_ord), 0, vl_ord);
-      vuint32m2_t vidx = __riscv_vadd_vx_u32m2(__riscv_vid_v_u32m2(vlmax), 1, vlmax);
-      vint32m2_t vstate = __riscv_vslideup_vx_i32m2_tu(zero32,
+      /* Review K1, as iir_mem16. */
+      vint16m1_t vnum = __riscv_vle16_v_i16m1(num, vl_ord);
+      vint32m2_t vstate = __riscv_vslideup_vx_i32m2_tu(
+            __riscv_vmv_v_x_i32m2(0, vlmax),
             __riscv_vle32_v_i32m2(mem, vl_ord), 0, vl_ord);
 
       for (i = 0; i < N; i++)
       {
+         spx_word32_t s0 = __riscv_vmv_x_s_i32m2_i32(vstate);
          spx_word16_t yi;
-         vint32m2_t prod, shifted;
-         __riscv_vse32_v_i32m2(mem, vstate, vl_ord);
-         yi = EXTRACT16(SATURATE(ADD32(EXTEND32(x[i]), PSHR32(mem[0], LPC_SHIFT)), 32767));
-         prod = __riscv_vwmacc_vx_i32m2(zero32, x[i], vnum, vlmax);
-         shifted = __riscv_vrgather_vv_i32m2(vstate, vidx, vlmax);
-         vstate = __riscv_vadd_vv_i32m2(shifted, prod, vlmax);
+         yi = EXTRACT16(SATURATE(ADD32(EXTEND32(x[i]), PSHR32(s0, LPC_SHIFT)), 32767));
+         vstate = __riscv_vslide1down_vx_i32m2(vstate, 0, vl_ord);
+         vstate = __riscv_vwmacc_vx_i32m2(vstate, x[i], vnum, vl_ord);
          y[i] = yi;
       }
       __riscv_vse32_v_i32m2(mem, vstate, vl_ord);
@@ -164,31 +157,25 @@ void filter_mem16(const spx_word16_t *x, const spx_coef_t *num, const spx_coef_t
       return;
    }
    {
-      vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
-      vint16m1_t zero16 = __riscv_vmv_v_x_i16m1(0, vlmax);
-      vint16m1_t vnum = __riscv_vslideup_vx_i16m1_tu(zero16,
-            __riscv_vle16_v_i16m1(num, vl_ord), 0, vl_ord);
-      /* _tu: lanes >= vl keep vd (=zero32/zero16), so the zero tail the
-       * VLMAX-wide vrgather/MAC reads below is guaranteed, not incidental
-       * (review R2). */
-      vint16m1_t vden = __riscv_vslideup_vx_i16m1_tu(zero16,
-            __riscv_vle16_v_i16m1(den, vl_ord), 0, vl_ord);
-      vuint32m2_t vidx = __riscv_vadd_vx_u32m2(__riscv_vid_v_u32m2(vlmax), 1, vlmax);
-      vint32m2_t vstate = __riscv_vslideup_vx_i32m2_tu(zero32,
+      /* Review K1, as fir_mem16: state in registers, VL=ord, no per-sample
+       * mem round trip. x may alias y: x[i] is consumed into the products
+       * before y[i] is stored, per sample. */
+      vint16m1_t vnum = __riscv_vle16_v_i16m1(num, vl_ord);
+      vint16m1_t vden = __riscv_vle16_v_i16m1(den, vl_ord);
+      vint32m2_t vstate = __riscv_vslideup_vx_i32m2_tu(
+            __riscv_vmv_v_x_i32m2(0, vlmax),
             __riscv_vle32_v_i32m2(mem, vl_ord), 0, vl_ord);
 
       for (i = 0; i < N; i++)
       {
+         spx_word32_t s0 = __riscv_vmv_x_s_i32m2_i32(vstate);
          spx_word16_t yi, nyi;
-         vint32m2_t prod, shifted;
-         __riscv_vse32_v_i32m2(mem, vstate, vl_ord);
-         yi = EXTRACT16(SATURATE(ADD32(EXTEND32(x[i]), PSHR32(mem[0], LPC_SHIFT)), 32767));
+         yi = EXTRACT16(SATURATE(ADD32(EXTEND32(x[i]), PSHR32(s0, LPC_SHIFT)), 32767));
          nyi = NEG16(yi);
          /* mem[j] = mem[j+1] + num[j]*xi + den[j]*nyi */
-         prod = __riscv_vwmacc_vx_i32m2(zero32, x[i], vnum, vlmax);
-         prod = __riscv_vwmacc_vx_i32m2(prod, (int16_t)nyi, vden, vlmax);
-         shifted = __riscv_vrgather_vv_i32m2(vstate, vidx, vlmax);
-         vstate = __riscv_vadd_vv_i32m2(shifted, prod, vlmax);
+         vstate = __riscv_vslide1down_vx_i32m2(vstate, 0, vl_ord);
+         vstate = __riscv_vwmacc_vx_i32m2(vstate, x[i], vnum, vl_ord);
+         vstate = __riscv_vwmacc_vx_i32m2(vstate, (int16_t)nyi, vden, vl_ord);
          y[i] = yi;
       }
       __riscv_vse32_v_i32m2(mem, vstate, vl_ord);
