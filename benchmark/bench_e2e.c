@@ -7,6 +7,36 @@ extern int speex_prof_enabled;
 #define PROF_GATE(v) ((void)0)
 #endif
 
+#ifdef __riscv
+/* rdtime CSR read: ~tens of cycles, negligible vs 40+us frames. Used for
+ * per-frame latency percentiles (review R10: p95/p99 frame latency). */
+static inline unsigned long long bench_rdt(void)
+{
+   unsigned long long v;
+   __asm__ volatile ("rdtime %0" : "=r"(v));
+   return v;
+}
+#define BENCH_HAVE_RDT 1
+#endif
+
+static int cmp_ull(const void *a, const void *b)
+{
+   unsigned long long x = *(const unsigned long long*)a, y = *(const unsigned long long*)b;
+   return x < y ? -1 : (x > y ? 1 : 0);
+}
+static void print_pctl(const char *tag, unsigned long long *v, int n, double tick_hz)
+{
+   unsigned long long *tmp = malloc(n * sizeof *tmp);
+   memcpy(tmp, v, n * sizeof *tmp);
+   qsort(tmp, n, sizeof *tmp, cmp_ull);
+   printf("%s p50=%llu p95=%llu p99=%llu max=%llu (us, tick=%.2fMHz)\n", tag,
+          (unsigned long long)(tmp[n/2]/tick_hz*1e6),
+          (unsigned long long)(tmp[(int)(n*0.95)]/tick_hz*1e6),
+          (unsigned long long)(tmp[(int)(n*0.99)]/tick_hz*1e6),
+          (unsigned long long)(tmp[n-1]/tick_hz*1e6), tick_hz/1e6);
+   free(tmp);
+}
+
 /* bench_e2e — end-to-end encode/decode throughput of the library under
  * test, public API only. This is the project's top-level speed metric;
  * kernel micro-benchmarks are added in this directory as RVV kernels
@@ -112,6 +142,19 @@ int main(int argc, char **argv)
       const char *phase = getenv("BENCH_PHASE");
       int do_enc = !phase || phase[0] != 'd';
       int do_dec = !phase || phase[0] != 'e';
+      double tick_hz = 0;
+#ifdef BENCH_HAVE_RDT
+      unsigned long long *ft_enc = malloc(nb_frames * sizeof *ft_enc);
+      unsigned long long *ft_dec = malloc(nb_frames * sizeof *ft_dec);
+      {
+         struct timespec ts0, ts1; unsigned long long ta; double el;
+         clock_gettime(CLOCK_MONOTONIC, &ts0);
+         ta = bench_rdt();
+         do { clock_gettime(CLOCK_MONOTONIC, &ts1);
+              el = (ts1.tv_sec-ts0.tv_sec) + (ts1.tv_nsec-ts0.tv_nsec)/1e9; } while (el < 0.2);
+         tick_hz = (bench_rdt()-ta)/el;
+      }
+#endif
 
       if (!do_enc)
       {
@@ -135,10 +178,16 @@ int main(int argc, char **argv)
             t0 = now_sec();
             for (i = 0; i < nb_frames; i++)
             {
+#ifdef BENCH_HAVE_RDT
+               unsigned long long f0 = bench_rdt();
+#endif
                unsigned char *chunk = stream + (size_t)i * CHUNK_STRIDE;
                speex_bits_reset(&bits);
                speex_encode_int(enc, pcm + (size_t)i * frame_size, &bits);
                chunk_lens[i] = speex_bits_write(&bits, (char *)chunk, CHUNK_STRIDE);
+#ifdef BENCH_HAVE_RDT
+               ft_enc[i] = bench_rdt() - f0;
+#endif
             }
             t1 = now_sec();
             if (t1 - t0 < best_enc) best_enc = t1 - t0;
@@ -149,10 +198,16 @@ int main(int argc, char **argv)
             t0 = now_sec();
             for (i = 0; i < nb_frames; i++)
             {
+#ifdef BENCH_HAVE_RDT
+               unsigned long long f0 = bench_rdt();
+#endif
                unsigned char *chunk = stream + (size_t)i * CHUNK_STRIDE;
                spx_int16_t out[1024];
                speex_bits_read_from(&bits, (char *)chunk, chunk_lens[i]);
                speex_decode_int(dec, &bits, out);
+#ifdef BENCH_HAVE_RDT
+               ft_dec[i] = bench_rdt() - f0;
+#endif
             }
             t1 = now_sec();
             if (t1 - t0 < best_dec) best_dec = t1 - t0;
@@ -161,6 +216,10 @@ int main(int argc, char **argv)
 
       printf("mode=%s q=%d frames=%d frame_size=%d rate=%d reps=%d\n",
              argv[1], quality, nb_frames, frame_size, rate, reps);
+#ifdef BENCH_HAVE_RDT
+      if (do_enc && tick_hz > 0) print_pctl("enc-frame-latency", ft_enc, nb_frames, tick_hz);
+      if (do_dec && tick_hz > 0) print_pctl("dec-frame-latency", ft_dec, nb_frames, tick_hz);
+#endif
       if (do_enc)
          printf("encode: %8.2f us/frame, realtime x%7.1f\n",
                 best_enc / nb_frames * 1e6, (double)nb_frames * frame_size / rate / best_enc);

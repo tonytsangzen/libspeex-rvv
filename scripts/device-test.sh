@@ -107,6 +107,42 @@ do_ab() {
    [ "$fail" -eq 0 ] && echo "== on-device A/B: ALL PASS ==" || { echo "== on-device A/B: FAILED =="; exit 1; }
 }
 
+do_benchp() {
+   # Paired A/B benchmark (review R10/M3): alternate A and B for
+   # BENCH_PAIRS rounds per mode/quality; report the median B/A time ratio
+   # with min..max, which is robust against session drift.
+   do_build
+   do_deploy
+   pairs=${BENCH_PAIRS:-5}
+   adb_s shell "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor" > /dev/null
+   for mode in nb wb uwb; do
+      for q in 8 2; do
+         rm -f /tmp/pairs.txt
+         for p in $(seq 1 $pairs); do
+            for side in a b; do
+               if [ $side = a ]; then bin=bench_a; else bin=bench_b; fi
+               out=$(adb_s shell "cd $REMOTE && ./$bin $mode $q 2 3 2>/dev/null")
+               e=$(echo "$out" | grep -o "encode: *[0-9.]*" | grep -o "[0-9.]*" | head -1)
+               d=$(echo "$out" | grep -o "decode: *[0-9.]*" | grep -o "[0-9.]*" | head -1)
+               echo "$e $d" >> /tmp/pairs.txt
+            done
+         done
+         cp /tmp/pairs.txt build/pairs-$mode-q$q.txt 2>/dev/null || true
+         awk -v mode=$mode -v q=$q -v pairs=$pairs '
+            { e[NR]=$1; d[NR]=$2 }
+            END {
+              for (i = 1; i <= pairs; i++) { k = 2*i - 1; er[i] = e[k+1]/e[k]; dr[i] = d[k+1]/d[k] }
+              # insertion sort (n=5)
+              for (i = 1; i <= pairs; i++) { a=er[i]; for (j=i-1;j>=1&&er[j]>a;j--) er[j+1]=er[j]; er[j+1]=a }
+              for (i = 1; i <= pairs; i++) { a=dr[i]; for (j=i-1;j>=1&&dr[j]>a;j--) dr[j+1]=dr[j]; dr[j+1]=a }
+              m = int(pairs/2) + 1
+              printf("%s q%d B/A: enc median %.3f [%.3f..%.3f]  dec median %.3f [%.3f..%.3f]\n",
+                     mode, q, er[m], er[1], er[pairs], dr[m], dr[1], dr[pairs]);
+            }' /tmp/pairs.txt
+      done
+   done
+}
+
 do_bench() {
    do_build    # freshness (review R10)
    do_deploy
@@ -128,6 +164,7 @@ for cmd in "$@"; do
       deploy) do_deploy ;;
       ab)     do_ab ;;
       bench)  do_bench ;;
+      benchp) do_benchp ;;
       all)    do_build; do_deploy; do_ab; do_bench ;;
       *) echo "usage: $0 [build|deploy|ab|bench|all]"; exit 1 ;;
    esac

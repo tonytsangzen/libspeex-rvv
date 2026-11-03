@@ -9,11 +9,17 @@
 
 #include <riscv_vector.h>
 
-/* This project targets the ratified RVV 1.0 intrinsics ABI
- * (gcc >= 12, clang >= 15). T-Head C9xx cores (C910/C920/C906) ship the
- * draft RVV 0.7.1 with a different intrinsics surface; if such a core is
- * the target, put its compatibility shims here behind SPEEX_RVV_THEAD
- * and keep the helper names below stable so kernels don't care. */
+/* ISA vs intrinsics API are different version axes (review section 2):
+ * the ISA here is RVV 1.0 (__riscv_v == 1000000), while gcc 13.3's
+ * intrinsics surface is the v0.11 C API (__riscv_v_intrinsic == 11000) —
+ * do not read the ISA macro as an API guarantee. Everything this project
+ * uses has been verified against gcc 13.3's actual behaviour, including
+ * the policy suffixes (_tu) and the assembly operand order of vmerge;
+ * segment tuple types (vint16m1x4_t and the vlseg intrinsics) are NOT
+ * available in gcc 13. T-Head C9xx cores ship the draft RVV 0.7.1 with a
+ * different intrinsics surface; if such a core is the target, put its
+ * compatibility shims here behind SPEEX_RVV_THEAD and keep the helper
+ * names below stable so kernels don't care. */
 #define SPEEX_RVV_1P0 1
 
 /* Cross-TU RVV helpers shared between module overrides (definitions live
