@@ -21,9 +21,10 @@
 | M3 | RVV: pitch_gain_search_3tap_vq(增益码本) | ✅ 编码再 -7%(nb q8 340→316) |
 | M3 | RVV: open_loop 选择循环+normalize16+gain 尾部+vq 向量尾部(第 14 轮) | ✅ 编码再 -3~16%(q8 模式 -12~16%) |
 | M3 | RVV: respT 转置布局+分链累加(第 15 轮,CPU 探测驱动) | ✅ 编码 wb q8 再 -2.6%;vq_sign 内核 -60% |
+| M3 | RVV: 剖析运行时门 + interp_pitch/multicomb 点积批合并(第 16 轮) | ✅ 解码 nb 再 -3~4%;真实解码成分首次确认 |
 | M3 | RVV: lsp 根查找 | ⬜ 自适应顺序游走,bit-exact 向量化无解(已论证) |
 | M3 | RVV: kiss_fft | ⬜ 编解码路径零调用,无价值(已论证) |
-| M4 | 全量回归 + 数据汇总 | ✅ 第 15 轮:编码 wb q8 -60.5% / uwb q8 -57.3% / nb q8 -40.8%;解码 -17~19% |
+| M4 | 全量回归 + 数据汇总 | ✅ 第 16 轮收敛:编码 wb q8 -60.8% / uwb q8 -58.1% / nb q8 -41.6%;解码 -18~22% |
 
 > 完成一项更新本表;每个 M3 内核落地时在 PR/commit 说明里附
 > run_ab.sh 结果与 bench_e2e 前后对比。

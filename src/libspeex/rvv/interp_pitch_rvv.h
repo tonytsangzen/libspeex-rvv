@@ -34,9 +34,15 @@ int len
    size_t vlmax = __riscv_vsetvlmax_e32m2();
    vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
 
-   for (i=0;i<7;i++)
    {
-      corr[0][i] = inner_prod(exc, exc-pitch-3+i, len);
+      /* the 7 correlations are consecutive lags of one x stream — exactly
+         pitch_xcorr's contract (corr[nb_pitch-1-i] = inner_prod(x, y+i,
+         len)), so a single batched sweep replaces 7 inner_prod calls with
+         identical per-dot arithmetic. */
+      spx_word32_t corr_flat[7];
+      pitch_xcorr(exc, exc-pitch-3, corr_flat, len, 7, 0);
+      for (i=0;i<7;i++)
+         corr[0][i] = corr_flat[6-i];
    }
    for (i=0;i<3;i++)
    {

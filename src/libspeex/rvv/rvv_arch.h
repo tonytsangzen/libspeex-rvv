@@ -16,6 +16,14 @@
  * and keep the helper names below stable so kernels don't care. */
 #define SPEEX_RVV_1P0 1
 
+/* Cross-TU RVV helpers shared between module overrides (definitions live
+ * in the module headers; prototypes here so any override can call them). */
+#if defined(FIXED_POINT)
+void pitch_xcorr(const spx_word16_t *_x, const spx_word16_t *_y, spx_word32_t *corr, int len, int nb_pitch, char *stack);
+void rvv_inner_prod_batch5(const spx_word16_t *a, const spx_word16_t *b, const spx_word16_t *x,
+                           int len, spx_word32_t *out);
+#endif
+
 /* Kernels must stay length-agnostic: always size loops with vsetvl*,
  * never with a compile-time VLEN. Add shared helpers here as they
  * emerge (e.g. fixed-point saturating MAC helpers that replicate the

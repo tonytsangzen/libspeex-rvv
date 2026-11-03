@@ -1,3 +1,6 @@
+/* Weak: only defined when the library is built with SPEEX_PROF=ON. */
+extern int speex_prof_enabled __attribute__((weak));
+
 /* bench_e2e — end-to-end encode/decode throughput of the library under
  * test, public API only. This is the project's top-level speed metric;
  * kernel micro-benchmarks are added in this directory as RVV kernels
@@ -106,6 +109,8 @@ int main(int argc, char **argv)
 
       if (!do_enc)
       {
+         /* keep the one untimed encode out of the profiler attribution */
+         if (&speex_prof_enabled) speex_prof_enabled = 0;
          for (i = 0; i < nb_frames; i++)
          {
             unsigned char *chunk = stream + (size_t)i * CHUNK_STRIDE;
@@ -113,6 +118,7 @@ int main(int argc, char **argv)
             speex_encode_int(enc, pcm + (size_t)i * frame_size, &bits);
             chunk_lens[i] = speex_bits_write(&bits, (char *)chunk, CHUNK_STRIDE);
          }
+         if (&speex_prof_enabled) speex_prof_enabled = 1;
       }
 
       for (rep = 0; rep < reps; rep++)

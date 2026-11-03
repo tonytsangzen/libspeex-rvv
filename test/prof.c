@@ -25,6 +25,11 @@ typedef struct {
    unsigned long cnt;
 } prof_entry_t;
 
+/* Runtime gate: the harness can stop/start attribution between top-level
+ * library calls (e.g. bench_e2e keeps the one untimed encode of its dec
+ * phase out of the data). Flip it ONLY between library calls. */
+int speex_prof_enabled = 1;
+
 static prof_entry_t entries[MAX_ENTRIES];
 static int n_entries = 0;
 static struct { void *fn; unsigned long long t0; } prof_stack[MAX_DEPTH];
@@ -51,6 +56,8 @@ __attribute__((no_instrument_function))
 void __cyg_profile_func_enter(void *fn, void *callsite)
 {
    (void)callsite;
+   if (!speex_prof_enabled)
+      return;
    if (prof_depth < MAX_DEPTH)
    {
       prof_stack[prof_depth].fn = fn;
@@ -65,6 +72,8 @@ void __cyg_profile_func_exit(void *fn, void *callsite)
    unsigned long long t = prof_now();
    int i;
    (void)callsite;
+   if (!speex_prof_enabled)
+      return;
    prof_depth--;
    if (prof_depth >= MAX_DEPTH)
       return;

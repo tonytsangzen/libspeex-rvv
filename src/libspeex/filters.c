@@ -770,6 +770,23 @@ char *stack
    /*interp_pitch(exc, iexc+2*nsf, 2*corr_pitch, 80);*/
 
    /*printf ("%d %d %f\n", pitch, corr_pitch, max_corr*ener_1);*/
+#ifdef _USE_RVV
+   {
+      /* one sweep for the five blocked-shift dots (order per dot identical
+         to inner_prod, so bit-exact) */
+      spx_word32_t d[5];
+      rvv_inner_prod_batch5(iexc, iexc+nsf, exc, nsf, d);
+      iexc0_mag = spx_sqrt(1000+d[0]);
+      iexc1_mag = spx_sqrt(1000+d[1]);
+      exc_mag = spx_sqrt(1+d[2]);
+      corr0  = d[3];
+      if (corr0<0)
+         corr0=0;
+      corr1 = d[4];
+      if (corr1<0)
+         corr1=0;
+   }
+#else
    iexc0_mag = spx_sqrt(1000+inner_prod(iexc,iexc,nsf));
    iexc1_mag = spx_sqrt(1000+inner_prod(iexc+nsf,iexc+nsf,nsf));
    exc_mag = spx_sqrt(1+inner_prod(exc,exc,nsf));
@@ -779,6 +796,7 @@ char *stack
    corr1 = inner_prod(iexc+nsf,exc,nsf);
    if (corr1<0)
       corr1=0;
+#endif
 #ifdef FIXED_POINT
    /* Doesn't cost much to limit the ratio and it makes the rest easier */
    if (SHL32(EXTEND32(iexc0_mag),6) < EXTEND32(exc_mag))

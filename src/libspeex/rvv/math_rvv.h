@@ -62,6 +62,85 @@ spx_word32_t inner_prod(const spx_word16_t *x, const spx_word16_t *y, int len)
    return rvv_inner_prod(x, y, len);
 }
 
+/* Round 16: five blocked-shift dots in one sweep, sharing the three input
+ * streams' deinterleaved loads (multicomb's iexc0_mag/iexc1_mag/exc_mag/
+ * corr0/corr1). Per-dot accumulation is exactly rvv_inner_prod's (block of
+ * 4 exact int32 products, arithmetic >>6, wrap add into the running sum —
+ * order-free modulo 2^32), so each output is bit-identical to five
+ * separate inner_prod calls.
+ * out[0]=a.a  out[1]=b.b  out[2]=x.x  out[3]=a.x  out[4]=b.x */
+void rvv_inner_prod_batch5(const spx_word16_t *a, const spx_word16_t *b, const spx_word16_t *x,
+                           int len, spx_word32_t *out)
+{
+   size_t vlmax = __riscv_vsetvlmax_e32m2();
+   vint32m2_t s0 = __riscv_vmv_v_x_i32m2(0, vlmax);
+   vint32m2_t s1 = s0, s2 = s0, s3 = s0, s4 = s0;
+   vint32m1_t zero = __riscv_vmv_v_x_i32m1(0, 1);
+   const int16_t *pa = (const int16_t *)a;
+   const int16_t *pb = (const int16_t *)b;
+   const int16_t *px = (const int16_t *)x;
+   size_t vl, n = (size_t)len >> 2;
+
+   while (n > 0)
+   {
+      vl = __riscv_vsetvl_e16m1(n);
+      {
+         vint16m1_t a0 = __riscv_vlse16_v_i16m1(pa + 0, 8, vl);
+         vint16m1_t a1 = __riscv_vlse16_v_i16m1(pa + 1, 8, vl);
+         vint16m1_t a2 = __riscv_vlse16_v_i16m1(pa + 2, 8, vl);
+         vint16m1_t a3 = __riscv_vlse16_v_i16m1(pa + 3, 8, vl);
+         vint16m1_t b0 = __riscv_vlse16_v_i16m1(pb + 0, 8, vl);
+         vint16m1_t b1 = __riscv_vlse16_v_i16m1(pb + 1, 8, vl);
+         vint16m1_t b2 = __riscv_vlse16_v_i16m1(pb + 2, 8, vl);
+         vint16m1_t b3 = __riscv_vlse16_v_i16m1(pb + 3, 8, vl);
+         vint16m1_t x0 = __riscv_vlse16_v_i16m1(px + 0, 8, vl);
+         vint16m1_t x1 = __riscv_vlse16_v_i16m1(px + 1, 8, vl);
+         vint16m1_t x2 = __riscv_vlse16_v_i16m1(px + 2, 8, vl);
+         vint16m1_t x3 = __riscv_vlse16_v_i16m1(px + 3, 8, vl);
+         vint32m2_t p;
+         p = __riscv_vmv_v_x_i32m2(0, vlmax);
+         p = __riscv_vwmacc_vv_i32m2(p, a0, a0, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, a1, a1, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, a2, a2, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, a3, a3, vl);
+         s0 = __riscv_vadd_vv_i32m2(s0, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+         p = __riscv_vmv_v_x_i32m2(0, vlmax);
+         p = __riscv_vwmacc_vv_i32m2(p, b0, b0, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, b1, b1, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, b2, b2, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, b3, b3, vl);
+         s1 = __riscv_vadd_vv_i32m2(s1, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+         p = __riscv_vmv_v_x_i32m2(0, vlmax);
+         p = __riscv_vwmacc_vv_i32m2(p, x0, x0, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, x1, x1, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, x2, x2, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, x3, x3, vl);
+         s2 = __riscv_vadd_vv_i32m2(s2, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+         p = __riscv_vmv_v_x_i32m2(0, vlmax);
+         p = __riscv_vwmacc_vv_i32m2(p, a0, x0, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, a1, x1, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, a2, x2, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, a3, x3, vl);
+         s3 = __riscv_vadd_vv_i32m2(s3, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+         p = __riscv_vmv_v_x_i32m2(0, vlmax);
+         p = __riscv_vwmacc_vv_i32m2(p, b0, x0, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, b1, x1, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, b2, x2, vl);
+         p = __riscv_vwmacc_vv_i32m2(p, b3, x3, vl);
+         s4 = __riscv_vadd_vv_i32m2(s4, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+      }
+      pa += 4 * vl;
+      pb += 4 * vl;
+      px += 4 * vl;
+      n -= vl;
+   }
+   out[0] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s0, zero, vlmax));
+   out[1] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s1, zero, vlmax));
+   out[2] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s2, zero, vlmax));
+   out[3] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s3, zero, vlmax));
+   out[4] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s4, zero, vlmax));
+}
+
 /* pitch_gain_search_3tap_vq: entry-parallel evaluation of the 9-term
  * quadratic form over the gain codebook (lanes = codebook entries),
  * followed by a scalar argmin that replicates the reference's selection
@@ -157,7 +236,8 @@ int pitch_gain_search_3tap_vq(
  * bit-exact vs the scalar pitch_xcorr/inner_prod pair. Leftover lags
  * (nb_pitch not a multiple of 4) fall back to rvv_inner_prod. */
 #define OVERRIDE_PITCH_XCORR 1
-static void pitch_xcorr(const spx_word16_t *_x, const spx_word16_t *_y, spx_word32_t *corr, int len, int nb_pitch, char *stack)
+/* non-static since round 16: filters.c's interp_pitch batch-uses it */
+void pitch_xcorr(const spx_word16_t *_x, const spx_word16_t *_y, spx_word32_t *corr, int len, int nb_pitch, char *stack)
 {
    int blocks = len >> 2;
    size_t vlmax = __riscv_vsetvlmax_e32m2();
