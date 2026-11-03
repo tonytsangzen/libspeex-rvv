@@ -1,6 +1,35 @@
-# libspeex-rvv 最终测试报告
+# libspeex-rvv 最终测试报告(全流程)
 
-日期:2026-11-03 · 分支 main(63bdd4e 之后) · 优化循环:16 轮
+日期:2026-11-04 · 分支 main · 任务周期 2026-11-02 ~ 11-04 ·
+优化 19 轮 + 独立审查响应 4 轮(验证/归因/测量),共 21 轮
+
+## 0. 任务全流程时间线
+
+| 阶段(2026-11-02) | 内容 |
+|------|------|
+| 初始化 | 项目骨架:baseline/ 只读参照、src/ 工作副本、CMake(FIXED_POINT/_USE_RVV/RVV_KERNELS/SPEEX_PROF + 工具链文件)、speex_ab 确定性 A/B 工具、bench_e2e、presets |
+| M1 | 交叉编译打通(gcc-13 rv64gcv,Docker buildenv 缓存镜像);qemu 全模式 A/B PASS;真机 BPMIK102080640200(SpacemiT X60)连通,adb 部署循环建立 |
+| 第 1 轮 | 首个教训:naive 逐 entry 点积仅平 gcc 自动向量化 → 确立"形状优先"方法论(entry-并行、免归约) |
+| 第 2-6 轮 | vq raw dists/argmin、compute_weighted_codebook、pitch_xcorr 4-lag 批、target_update、iir/fir/filter_mem16(转置 DF vrgather)、interp_pitch |
+| 第 7 轮 | 真机剖析基建(-finstrument-functions + rdtime),确认后续优先级 |
+
+| 阶段(2026-11-03) | 内容 |
+|------|------|
+| 第 8-11 轮 | multicomb 尾部 + compute_rms16、lsp_to_lpc 级联展开、qmf_decomp、qmf_synth(调度驱动版,后被第 18 轮取代) |
+| 第 12 轮 | 编译旗标矩阵(阴性:无免费午餐,手写内核主导) |
+| 第 13 轮 | pitch_gain_search_3tap_vq(增益码本 entry-并行) |
+| 第 14 轮 | 编码尾部清扫:open_loop argmax、normalize16、增益尾部、vq 向量尾部;printf 风暴事故复盘 |
+| 第 15 轮 | CPU 能力探针 v1 + respT 转置布局 + 分链累加 |
+| 第 16 轮 | 剖析运行时门(prof gate);interp_pitch/multicomb 点积批合并 |
+| 独立审查 | code-review-2026-11-03.md(对象 0f103b6):R1-R12 正确性/测试/归因/边界发现 + M0-M3 分期方案 |
+
+| 阶段(2026-11-03 ~ 11-04,审查响应) | 内容 |
+|------|------|
+| 第 17 轮(M0/M1) | 尾部策略 `_tu` 纪律(R1/R2/R3)、哨兵等值种子(R6)、ABS16 INT16_MIN(R7)、自指 guard 的 target_update(R9)、构建矩阵(R8)、gshelp 测试修复(R4)、契约文档(R11/R12);毒化矩阵 72/72 |
+| 第 18 轮(M2-K2) | QMF synth 固定形态替代调度解释器 → 解码 wb -25~28% / uwb -40~42% |
+| 第 19 轮(M2-K1) | 滤波器状态驻留寄存器(vslide1down/vmv.x.s/VL=ord)→ 编码 -6.6~9.8% / 解码 -4.9~8.7% |
+| 第 20 轮(M2-K3/K5) | K3 停止判定(vlseg4 工具链阻断、lane=lag 权衡反转);K5 逐内核消融归因(全部 override 正贡献) |
+| 第 21 轮(M3) | 配对基准(benchp,中位数±0.3% 区间)、帧时延百分位(p50/p95/p99)、资源记录、rvv_arch 版本声明修正 |
 
 ## 1. 项目与验收口径
 
@@ -31,6 +60,12 @@
 | inner_prod_diff(分块移位点积) | 0/80,000 失配 |
 | gainvq_diff(gain-VQ 二次型,全 int16 域) | 0/2,000 失配 |
 | **差分合计** | **0 / 165,960 失配** |
+| 尾部策略毒化矩阵(qemu TA/MA 全 1 × VLEN128/256/512 × 6 测试,第 17 轮) | **72/72 通过 0 失配** |
+| 毒化模式端到端 A/B(第 17 轮) | ALL PASS |
+| CTest 门禁(8 测试,qemu 模拟器自动包装) | 8/8 |
+| qmf_diff 固定形态复验(第 18 轮,normal+毒化 × VLEN128/256/512) | 0/240000 × 4 组 |
+| filter_diff(第 19 轮,normal+毒化 × VLEN128/256/512) | 0/577 × 12 组 |
+| 配对基准(第 21 轮,5 对 A/B 交替 × 6 模式) | 中位数区间 ±0.3% |
 
 ### 2.2 端到端性能(同会话 A vs baseline,µs/帧)
 
@@ -75,6 +110,8 @@
 | 17 | 审查响应:M0 正确性修复(_tu 尾部/哨兵种子/ABS16/guard)+ 毒化验收体系 | −60.8% / −21.7%(修复零代价) |
 | 18 | 审查 M2-K2:QMF synth 固定形态替代调度解释器 | −60.4% / **−40~52%(wb/uwb)** |
 | 19 | 审查 M2-K1:滤波器状态驻留寄存器(vslide1down/vmv.x.s,VL=ord) | **−63.6% / −44~56%** |
+| 20 | 审查 M2-K3 停止判定 + K5 逐内核消融归因 | (归因轮,无性能变更) |
+| 21 | 审查 M3:配对基准(中位数±0.3%)、帧时延百分位、资源记录 | (测量加固,无性能变更) |
 
 ## 3. 目标 CPU 能力实测(test/cpu_probe.c,probe v3,第 17 轮审查后修正)
 
