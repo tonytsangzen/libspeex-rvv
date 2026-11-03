@@ -515,7 +515,7 @@ int scaledown
       if (tmp3>pp+pitch)
          tmp3=pp+pitch;
       spx_word16_t g7=SHL16(gain[2-i],7);
-#if defined(_USE_RVV) && !defined(R14_NO_GSHELP)
+#if defined(_USE_RVV) && defined(FIXED_POINT) && !defined(R14_NO_GSHELP)
       if (tmp1>0)
          rvv_gain_build_exc(exc, exc2-pp, 0, tmp1, g7);
       if (tmp3>tmp1)
@@ -528,7 +528,7 @@ int scaledown
          exc[j]=MAC16_16(exc[j],SHL16(gain[2-i],7),exc2[j-pp-pitch]);
 #endif
    }
-#if defined(_USE_RVV) && !defined(R14_NO_GSHELP)
+#if defined(_USE_RVV) && defined(FIXED_POINT) && !defined(R14_NO_GSHELP)
    rvv_gain_update_new_target(new_target, x[0], x[1], x[2], gain[0], gain[1], gain[2], nsf);
 #else
    for (i=0;i<nsf;i++)

@@ -441,3 +441,59 @@ vqtail 0/34560、gainvq 0/2000、inner_prod 0 组失配。
 - **优化循环收敛**:连续三轮单轮 e2e 增益编码 ≤2.6%、解码 ≤4%,
   且无剩余 ≥5% 的可行目标。后续只有两条路:多线程批处理(库外,
   8 核 ~×8)与净环境重测基线(需停板子桌面,待用户批准)。
+
+## 第 17 轮(2026-11-03,独立审查响应:M0/M1 正确性与验证体系)
+
+响应 docs/code-review-2026-11-03.md(审查对象 0f103b6)。本轮不做
+性能改写,全部为正确性修复与验证体系,性能复核为零代价。
+
+**正确性修复(M0,review R1/R2/R3/R6/R7/R9/R8)**:
+- R1 inner_prod/batch5/pitch_xcorr/sumsq:持久向量累加器的短 VL 更新
+  改 `_tu`(tail-undisturbed),尾部不再可能被 agnostic 写破坏。
+- R2 iir/fir/filter_mem16:系数与状态向量的 vslideup 改 `_tu`,
+  VLMAX 宽 vrgather/MAC 读取的零尾由 vd=zero 保证而非侥幸。
+- R3 vq N=1 与 open_loop 选择:候选值/索引向量改 `_tu` merge;
+  open_loop 的三路 (num,den,lag) 同理。
+- R6 vq 哨兵等值:entry 0 改为标量种子强制接纳(逐字 MAC16_16 语义),
+  向量路径覆盖 [1,entries)——实值等于 INT32_MAX 的首条目不再丢失
+  (审查者的 len=2 反例现在通过)。
+- R7 open_loop 饱和扫描:窄位宽 abs 改为对原始值的双向阈值
+  (vredmax>16383 || vredmin<-16383),INT16_MIN 不再漏检。
+- R9 target_update:自指 guard(`defined(OVERRIDE_TARGET_UPDATE)`
+  在定义宏之前)修复——该 override 自第 4 轮起实际从未启用;修正后
+  真机 A/B ALL PASS,e2e 变化在噪声内(占比确实很小)。
+- R8 构建:diff 测试注册进 CTest(7/7 过,CMAKE_CROSSCOMPILING_EMULATOR
+  接 qemu);bench_e2e 的剖析门改 config.h 编译期宏(弱数据符号破坏
+  macOS 静态链接);浮点+RVV 组合的调用点 guard 收紧为
+  `_USE_RVV && FIXED_POINT`(原链接失败);device-test.sh 的 B 侧
+  (baseline)只构建 A/B/基准产物(差分测试在 B 侧无 RVV 符号,
+  之前构建必失败——这也是"ab 前必须确认 build 成功"的新实例)。
+
+**测试修复(M0a)**:
+- R4 gshelp_diff:exc2 指针改指历史区末端(原在分配起点之前读越界),
+  红区意义上的历史初始化;修复后 new_target 与 exc-build 两组证据
+  均有效。
+- R11/R12:baseline 出处(与官方 1.2.1 发布包存在 QCONST16/EPSILON 等
+  差异,按"行为参照"冻结)与定点算术契约(有符号回绕依赖、
+  inner_prod 分块右移语义、QMF 系数窄化)写入 docs/rvv-notes.md。
+
+**验收(reviewer 方法复现)**:qemu `-cpu rv64,v=true,vlen={128,256,512}`
+× {normal, TA 全 1, MA 全 1, TA+MA 全 1} 全差分矩阵 **72/72 通过 0 失配**
+(修复前:inner_prod/batch5 大面积失配、vqtail SIGSEGV、open_loop
+数千失配);毒化模式端到端 A/B ALL PASS;CTest 7/7;真机 A/B ALL PASS。
+
+**探针重做(R5)**:cpu_probe v3——全部累加流/加载流消费进 sink、
+地址轮转防提升、单位为标定后的 ns(不虚称 cycles)。修正后的能力
+数字(详见 rvv-notes/final-report):
+- vmacc 吞吐 ≈ **0.33-0.42 vec-op/cyc**(e32m2,2 流已近峰值,
+  "需 ≥8 流达 1 vec-op/cyc"撤回);
+- vlse16 ≈ **3.7× 慢于 vle16**("8×"撤回;respT 转置的实测收益
+  2~3× 仍成立);
+- 向量/标量 ≈ **32×**("40×"撤回);
+- memcpy ≈ 5.0 GB/s(与 libc 4.4GB/s 一致;v2 的 5.3GB/s 为死代码
+  消除伪影,v3 的 5MB/s 为 rdt 计时形态在 X60 上的病态代码生成,
+  clock_gettime 计时形态正常——两者都已记录)。
+
+**性能复核(同会话 r16→r17 严格对照)**:全部变化在 ±1% 噪声内
+(修复零代价);累计矩阵维持编码 wb q8 **-60.8%** / uwb q8 -57.6% /
+nb q8 -41.5%,解码 -17~22%。

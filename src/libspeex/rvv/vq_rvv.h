@@ -91,6 +91,20 @@ void vq_nbest(spx_word16_t *in, const spx_word16_t *codebook, int len, int entri
       int bv;
       unsigned bi;
       int l;
+      /* Seed with entry 0: the C reference force-accepts it, so a real
+       * distance equal to the INT32_MAX sentinel must not be lost (review
+       * R6) — the strict-less merge can never capture an equal value. The
+       * scalar seed replicates MAC16_16 over the column-major codebook;
+       * the vector path covers entries [1, entries). */
+      {
+         spx_word32_t raw = 0;
+         const spx_word16_t *cb = codebook; /* column-major: cb[j*entries] */
+         for (k = 0; k < len; k++)
+            raw = MAC16_16(raw, in[k], cb[(size_t)k*entries]);
+         bv = (int)SUB32(SHR32(E[0],1), raw);
+         bi = 0;
+         off = 1;
+      }
       while (off < (size_t)entries)
       {
          size_t vl = __riscv_vsetvl_e16m1((size_t)entries - off);
@@ -103,15 +117,16 @@ void vq_nbest(spx_word16_t *in, const spx_word16_t *codebook, int len, int entri
          dist = __riscv_vrsub_vx_i32m2(dist, 0, vl);
          dist = __riscv_vadd_vv_i32m2(dist, e, vl);     /* SUB32(E/2, raw) = E/2 + (-raw) */
          m = __riscv_vmslt_vv_i32m2_b16(dist, rv, vl);
-         rv = __riscv_vmerge_vvm_i32m2(rv, dist, m, vl);
+         /* _tu keeps the sentinel tail of the running candidate vectors;
+          * they are stored and reduced at VLMAX below (review R3). */
+         rv = __riscv_vmerge_vvm_i32m2_tu(rv, rv, dist, m, vl);
          ci = __riscv_vadd_vx_u32m2(__riscv_vid_v_u32m2(vl), (unsigned)off, vl);
-         ri = __riscv_vmerge_vvm_u32m2(ri, ci, m, vl);
+         ri = __riscv_vmerge_vvm_u32m2_tu(ri, ri, ci, m, vl);
          off += vl;
       }
       __riscv_vse32_v_i32m2(lv, rv, vlmax);
       __riscv_vse32_v_u32m2(li, ri, vlmax);
-      bv = (int)lv[0]; bi = (unsigned)li[0];
-      for (l = 1; l < (int)vlmax; l++)
+      for (l = 0; l < (int)vlmax; l++)
          if (lv[l] < bv || (lv[l] == bv && li[l] < bi))
          {
             bv = (int)lv[l]; bi = (unsigned)li[l];
@@ -167,6 +182,20 @@ void vq_nbest_sign(spx_word16_t *in, const spx_word16_t *codebook, int len, int 
       int bv, j;
       unsigned bi;
       int l;
+      /* entry-0 seed: forced accept in the reference; a real distance equal
+       * to the INT32_MAX sentinel would otherwise be lost by the strict-less
+       * merge (review R6). Vector path covers entries [1, entries). */
+      {
+         spx_word32_t raw0 = 0;
+         const spx_word16_t *cb0 = codebook; /* column-major: cb[j*entries] */
+         for (j = 0; j < len; j++)
+            raw0 = MAC16_16(raw0, in[j], cb0[(size_t)j*entries]);
+         if (raw0 > 0)
+            raw0 = -raw0;
+         bv = (int)ADD32(raw0, SHR32(E[0],1));
+         bi = 0;
+         off = 1;
+      }
       while (off < (size_t)entries)
       {
          size_t vl = __riscv_vsetvl_e16m1((size_t)entries - off);
@@ -180,15 +209,14 @@ void vq_nbest_sign(spx_word16_t *in, const spx_word16_t *codebook, int len, int 
          e = __riscv_vsra_vx_i32m2(e, 1, vl);
          dist = __riscv_vadd_vv_i32m2(flip, e, vl);     /* ADD32(+E/2) */
          m = __riscv_vmslt_vv_i32m2_b16(dist, rv, vl);
-         rv = __riscv_vmerge_vvm_i32m2(rv, dist, m, vl);
+         rv = __riscv_vmerge_vvm_i32m2_tu(rv, rv, dist, m, vl);
          ci = __riscv_vadd_vx_u32m2(__riscv_vid_v_u32m2(vl), (unsigned)off, vl);
-         ri = __riscv_vmerge_vvm_u32m2(ri, ci, m, vl);
+         ri = __riscv_vmerge_vvm_u32m2_tu(ri, ri, ci, m, vl);
          off += vl;
       }
       __riscv_vse32_v_i32m2(lv, rv, vlmax);
       __riscv_vse32_v_u32m2(li, ri, vlmax);
-      bv = (int)lv[0]; bi = (unsigned)li[0];
-      for (l = 1; l < (int)vlmax; l++)
+      for (l = 0; l < (int)vlmax; l++)
          if (lv[l] < bv || (lv[l] == bv && li[l] < bi))
          {
             bv = (int)lv[l]; bi = (unsigned)li[l];

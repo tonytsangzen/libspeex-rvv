@@ -26,6 +26,7 @@
 
 /* Fixed-point arithmetic: the target configuration for RISC-V. */
 #cmakedefine FIXED_POINT 1
+#cmakedefine SPEEX_PROF 1
 
 /* Floating-point arithmetic (mutually exclusive with FIXED_POINT). */
 #cmakedefine FLOATING_POINT 1

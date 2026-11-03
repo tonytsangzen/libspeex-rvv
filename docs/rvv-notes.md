@@ -84,3 +84,51 @@ RVV intrinsics 里很多"等价"指令(vsmul、vnclip、vssra 的舍入模式、
   密集路径虚高 40-70%,prof-on 的 A/B 比值失真。
 - ab 前**必须确认 build 成功**(device-test.sh 的 docker 退出码会被
   管道掩盖;build 失败后 ab 会部署陈旧二进制并给出误导性 FAIL)。
+
+## 参照与算术契约(审查 R11/R12,2026-11-03)
+
+**baseline 出处**:baseline/ 与 Xiph 官方 1.2.1 发布包
+(speex-1.2.1.tar.gz, sha256 4b44d4f2…28feea)**不是字面等同**:
+nb_celp.c 带宽扩展用 QCONST16(发布包为浮点常量)、sb_celp.c 的
+filter_ratio 有 EPSILON 下限、质量范围/初始化存在修正(独立审查比对)。
+baseline 按"当前行为参照"冻结——它是 A/B 的语义基准;是否另建"官方
+发布版参照"属项目决策,不得用发布包直接覆盖 baseline。
+
+**定点算术契约**:fixed_generic.h 的 ADD32/SUB32/MAC16_16 依赖有符号
+int32 的二补码回绕(C 标准中为 UB;上游 libspeex 同样依赖)。RVV 内核
+的位精确论证以此为前提。要点:
+- inner_prod 语义 = 每 4 项的 int32 和**先回绕、再算术右移 6、再累加**,
+  不是宽积分后统一移位;
+- QMF 系数"取负再窄化"的边界(含 -32768)是参考行为,不得按"更精确"
+  改写;
+- 左移与 INT32_MIN 取负需逐项按选定参考定义。
+随机差分 PASS 不构成对 UB 的数学证明;两侧编译器选项若引入不同
+回绕/移位行为,位精确前提即失效(候选:-fwrapv 双侧固定,未启用)。
+
+**RVV 尾部策略纪律(审查 R1/R2/R3 后新增)**:短 VL 写操作的目的地
+尾部是 agnostic(indeterminate),跨操作读取属源码正确性问题——
+- 持久向量累加器的更新一律 `_tu`(vadd/vmerge);
+- 状态向量(滤波器 mem、候选值/索引)的短 VL 写入同上;
+- 归约/reduction 只在活跃 VL 上进行,或保证源全宽有定义;
+- 验收门禁:qemu `-cpu rv64,v=true,vlen={128,256,512},vext_spec=v1.0`
+  × {normal, ta_all_1s, ma_all_1s, ta+ma} 四策略矩阵,全差分 + e2e
+  (build/review/run-tail-matrix.sh)。
+
+## CPU 能力修正表(probe v3,2026-11-03;取代第 15 轮 v2 数字)
+
+probe v2 的三处缺陷:部分累加流被死代码消除、"unit load 被提升出
+计时环"、rdtime 计时形态在 X60 上引发病态代码生成。v3 全消费 +
+clock_gettime 计时后:
+
+| 项目 | v3 实测 | 对 v2 结论的修正 |
+|------|---------|------------------|
+| vmacc 延迟 | 3.1 ns/vec-op(≈5 cyc @1.6GHz) | 维持 |
+| vmacc 吞吐(e32m2 16 lane) | 2.4-3.0 ns/vec-op ≈ **0.33-0.42 vec-op/cyc**;"2 流已近峰值"(2/4/8 流 3.2/2.9/3.0ns) | "≥8 流达 1 vec-op/cyc、14-16 lane-MAC/cyc"撤回 |
+| vwmacc e16m2(32 lane)+load | 5.2-5.3 ns/vec-op | — |
+| vlse16(2KB span) vs vle16(64B span) | 21.3 vs 5.7 ns = **3.7×** | "8×"撤回 |
+| RVV memcpy(8MB,全消费) | ≈5.0 GB/s(libc 4.4) | v2 5.3GB/s 为死代码消除伪影 |
+| 向量/标量(全消费) | ≈**32×** | "40×"撤回 |
+
+工程含义:respT 转置布局的收益依据从"跨步 8×"修正为"跨步 3.7×",
+实测内核收益 2~3× 与之自洽;累加链分链的收益上限低于 v2 推断,
+第 15 轮实测(e2e -1~3%)与之自洽。

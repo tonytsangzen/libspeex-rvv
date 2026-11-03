@@ -147,22 +147,45 @@ static int do_decode(const SpeexMode *mode,
    speex_decoder_ctl(dec, SPEEX_SET_ENH, &tmp);
    speex_mode_query(mode, SPEEX_MODE_FRAME_SIZE, &frame_size);
 
+   long nframes = 0;
+   uint32_t len;
    frame = malloc(frame_size * sizeof *frame);
-   for (;;)
+   while (read_u32le(fin, &len))
    {
-      uint32_t len;
-      if (!read_u32le(fin, &len))
-         break;
-      if (len > sizeof chunk)
+      int rc;
+      if (len == 0 || len > sizeof chunk)
       {
          fprintf(stderr, "corrupt container: frame length %u\n", (unsigned)len);
          return 1;
       }
       if (fread(chunk, 1, len, fin) != len)
-         break;
+      {
+         fprintf(stderr, "corrupt container: truncated frame body\n");
+         return 1;
+      }
       speex_bits_read_from(&bits, (char *)chunk, (int)len);
-      speex_decode_int(dec, &bits, frame);
-      fwrite(frame, sizeof *frame, frame_size, fout);
+      rc = speex_decode_int(dec, &bits, frame);
+      if (rc != 0)
+      {
+         fprintf(stderr, "decode failed at frame %ld (rc=%d)\n", nframes, rc);
+         return 1;
+      }
+      if (fwrite(frame, sizeof *frame, frame_size, fout) != (size_t)frame_size)
+      {
+         fprintf(stderr, "write failed\n");
+         return 1;
+      }
+      nframes++;
+   }
+   if (ferror(fin))
+   {
+      fprintf(stderr, "read failed\n");
+      return 1;
+   }
+   if (nframes == 0)
+   {
+      fprintf(stderr, "no frames decoded\n");
+      return 1;
    }
    free(frame);
    speex_bits_destroy(&bits);

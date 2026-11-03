@@ -180,6 +180,29 @@ RVV_KERNELS=ON ./scripts/device-test.sh build ab bench
 - 连续多轮单轮增益 <3% 且无 ≥5% 可行目标 = 收敛信号,继续挖的
   边际成本大于收益。
 
+### 尾部策略与测量纪律(第 17 轮,独立审查驱动)
+- **短 VL 写的尾部是 agnostic(indeterminate)**:持久向量累加器、
+  状态向量、候选值/索引的短 VL 更新一律 `_tu`,否则跨操作读尾部是
+  源码正确性问题。验收:qemu `-cpu rv64,v=true,vlen={128,256,512}
+  ,rvv_ta_all_1s=true,rvv_ma_all_1s=true` 毒化矩阵——普通 QEMU 全过
+  不能证明可移植正确性(全 1 尾下 inner_prod/batch5 失配、vqtail
+  SIGSEGV、open_loop 数千失配,一次全暴露)。
+- **哨兵初始化 + 严格小于的 argmin 永远捕不到等于哨兵的实值**:
+  C 参考的"首条目强制接纳"要用标量种子显式实现,向量路径从
+  [1, entries) 开始。
+- **ABS16(-32768) 经整型提升得 32768**:窄位宽向量 abs 会漏检;
+  对原始值做双向阈值(vredmax>hi || vredmin<lo)才精确。
+- **微基准的全部累加流/加载流必须消费进 sink**,否则死代码消除会
+  产生 1000× 的假数(v2 探针的"1 vec-op/cyc""跨步 8×""40× 收益"
+  全部因此撤回);rdtime 计时形态在 X60 上还有病态代码生成,
+  计时统一用 clock_gettime。
+- **guard 自指**:`#if defined(X_OVERRIDE)` 内 `#define X_OVERRIDE`
+  永不为真——override 从第 4 轮起静默失效了 13 轮;启用前先 grep
+  预处理结果,不要把"写了 override"当作"启用了 override"。
+- **测试与产物的新鲜度**:device-test 的 B 侧(baseline)链接差分
+  测试必失败(无 RVV 符号),构建目标要按侧裁剪;ab/bench 强制先
+  build;build 失败被管道掩盖时 ab 会用陈旧产物给出假结果。
+
 ### 脚本/bash
 - `${VAR:-default}` **不能对同一变量用两次**(第一次已赋值,交叉模式的
   第二默认永远不生效)——分支里各自给默认。

@@ -43,11 +43,15 @@ int main(void)
          spx_word16_t *x2 = malloc(nsf*sizeof(spx_word16_t));
          spx_word16_t *nt1 = malloc(nsf*sizeof(spx_word16_t));
          spx_word16_t *nt2 = malloc(nsf*sizeof(spx_word16_t));
-         /* exc window with history below it (exc2 reads at negative offsets) */
-         int hist = pitch + 200;
+         /* exc window with valid history BELOW the pointer: exc2 points at
+          * the END of a real history region inside one allocation, so the
+          * exc2[j-pp]/[j-pp-pitch] reads land in initialized memory
+          * (review R4: they used to run off the front of the block). */
+         int hist = pitch + pitch + 8;   /* deepest read is about -(2*pitch+1) */
          spx_sig_t *excb1 = malloc((hist+nsf)*sizeof(spx_sig_t));
          spx_sig_t *excb2 = malloc((hist+nsf)*sizeof(spx_sig_t));
-         spx_word16_t *exc2 = malloc(hist*sizeof(spx_word16_t));
+         spx_word16_t *exc2b = malloc(hist*sizeof(spx_word16_t));
+         spx_word16_t *exc2 = exc2b + hist;
          spx_sig_t *exc1 = excb1 + hist, *exc2v = excb2 + hist;
          spx_word16_t gain[3];
          int i, g7;
@@ -60,7 +64,7 @@ int main(void)
             nt1[i] = nt2[i] = (spx_word16_t)((int)rnd()-32768);
          }
          for (i=0;i<hist;i++)
-            exc2[i] = (spx_word16_t)((int)rnd()-32768);
+            exc2b[i] = (spx_word16_t)((int)rnd()-32768);   /* exc2[-hist..-1] */
          gain[0] = (spx_word16_t)((int)rnd()%257 - 96);
          gain[1] = (spx_word16_t)((int)rnd()%257 - 96);
          gain[2] = (spx_word16_t)((int)rnd()%257 - 96);
@@ -127,7 +131,7 @@ int main(void)
          }
 
          free(x0); free(x1); free(x2); free(nt1); free(nt2);
-         free(excb1); free(excb2); free(exc2);
+         free(excb1); free(excb2); free(exc2b);
       }
 
    printf("%ld/%ld mismatches\n", fails, total);

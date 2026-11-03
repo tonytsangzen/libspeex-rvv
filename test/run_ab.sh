@@ -76,13 +76,19 @@ for mode in nb wb uwb; do
       run "$BUILD_A/test/speex_ab" decode "$mode" "$a" "$DATA/dec-aa-$mode-q$q.raw"
       run "$BUILD_B/test/speex_ab" decode "$mode" "$b" "$DATA/dec-bb-$mode-q$q.raw"
       run "$BUILD_A/test/speex_ab" decode "$mode" "$b" "$DATA/dec-ab-$mode-q$q.raw"
+      run "$BUILD_B/test/speex_ab" decode "$mode" "$a" "$DATA/dec-ba-$mode-q$q.raw"
       if ! cmp -s "$DATA/dec-aa-$mode-q$q.raw" "$DATA/dec-bb-$mode-q$q.raw"; then
          echo "FAIL($mode q$q): round-trip PCM differs"
          fail=1
          continue
       fi
       if ! cmp -s "$DATA/dec-aa-$mode-q$q.raw" "$DATA/dec-ab-$mode-q$q.raw"; then
-         echo "FAIL($mode q$q): cross-decode PCM differs"
+         echo "FAIL($mode q$q): cross-decode PCM differs (A decodes B)"
+         fail=1
+         continue
+      fi
+      if ! cmp -s "$DATA/dec-bb-$mode-q$q.raw" "$DATA/dec-ba-$mode-q$q.raw"; then
+         echo "FAIL($mode q$q): cross-decode PCM differs (B decodes A)"
          fail=1
          continue
       fi

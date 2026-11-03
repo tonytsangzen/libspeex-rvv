@@ -59,27 +59,31 @@ void open_loop_nbest_pitch(spx_word16_t *sw, int start, int end, int len, int *p
    /* Saturation scan over sw[-end..len): OR of ABS16(sw[i])>16383, an
       order-free reduction (NEG16 wrap included). */
    {
+      /* ABS16 in the scalar reference promotes to int, so ABS16(-32768) is
+       * 32768 — a narrow-width abs would keep -32768 and miss the only
+       * sample above the threshold (review R7). Testing the raw value
+       * against both bounds is exact for every int16 input. */
       const spx_word16_t *p = sw - end;
       int total = end + len;
-      int maxabs = -32768;
+      int hi = -32768, lo = 32767;
       size_t off = 0;
       while (off < (size_t)total)
       {
          size_t vl = __riscv_vsetvl_e16m2((size_t)total - off);
          vint16m2_t v = __riscv_vle16_v_i16m2(p + off, vl);
-         vint16m2_t neg = __riscv_vrsub_vx_i16m2(v, 0, vl);
-         /* gcc-13 vmerge_vvm(op1, op2, m) = m ? op2 : op1 (assembly operand
-            order: op1 is the false branch, NOT the spec's vs1-true order) */
-         vint16m2_t ax = __riscv_vmerge_vvm_i16m2(v, neg,
-               __riscv_vmslt_vx_i16m2_b8(v, 0, vl), vl);
-         vint16m1_t red = __riscv_vredmax_vs_i16m2_i16m1(ax,
+         vint16m1_t rmax = __riscv_vredmax_vs_i16m2_i16m1(v,
                __riscv_vmv_v_x_i16m1(-32768, 1), vl);
-         int m = __riscv_vmv_x_s_i16m1_i16(red);
-         if (m > maxabs)
-            maxabs = m;
+         vint16m1_t rmin = __riscv_vredmin_vs_i16m2_i16m1(v,
+               __riscv_vmv_v_x_i16m1(32767, 1), vl);
+         int mx = __riscv_vmv_x_s_i16m1_i16(rmax);
+         int mn = __riscv_vmv_x_s_i16m1_i16(rmin);
+         if (mx > hi)
+            hi = mx;
+         if (mn < lo)
+            lo = mn;
          off += vl;
       }
-      if (maxabs > 16383)
+      if (hi > 16383 || lo < -16383)
          scaledown = 1;
    }
    if (scaledown)
@@ -196,9 +200,12 @@ void open_loop_nbest_pitch(spx_word16_t *sw, int start, int end, int len, int *p
             vbool16_t m = __riscv_vmslt_vv_i32m2_b16(pB, pA, vl); /* pA > pB */
             vuint32m2_t ci = __riscv_vadd_vx_u32m2(__riscv_vid_v_u32m2(vl),
                   (unsigned)(start + (int)off), vl);
-            rn = __riscv_vmerge_vvm_i32m2(rn, a, m, vl);
-            rd = __riscv_vmerge_vvm_i32m2(rd, b, m, vl);
-            ri = __riscv_vmerge_vvm_u32m2(ri, ci, m, vl);
+            /* _tu: the running (num, den, lag) vectors are stored and
+               reduced at VLMAX after the chunk loop; short-VL updates must
+               keep the sentinel tail (review R3). */
+            rn = __riscv_vmerge_vvm_i32m2_tu(rn, rn, a, m, vl);
+            rd = __riscv_vmerge_vvm_i32m2_tu(rd, rd, b, m, vl);
+            ri = __riscv_vmerge_vvm_u32m2_tu(ri, ri, ci, m, vl);
             off += vl;
          }
          __riscv_vse32_v_i32m2(ln, rn, vlmax);

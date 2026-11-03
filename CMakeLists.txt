@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(libspeex-rvv C)
+enable_testing()
 
 # Which libspeex tree to build. Defaults to the ported working copy (src/);
 # point it at baseline/ to build the untouched reference for A/B testing

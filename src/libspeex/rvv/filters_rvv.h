@@ -89,10 +89,13 @@ void iir_mem16(const spx_word16_t *x, const spx_coef_t *den, spx_word16_t *y, in
    {
       vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
       vint16m1_t zero16 = __riscv_vmv_v_x_i16m1(0, vlmax);
-      vint16m1_t vden = __riscv_vslideup_vx_i16m1(zero16,
+      /* _tu: lanes >= vl keep vd (=zero32/zero16), so the zero tail the
+       * VLMAX-wide vrgather/MAC reads below is guaranteed, not incidental
+       * (review R2). */
+      vint16m1_t vden = __riscv_vslideup_vx_i16m1_tu(zero16,
             __riscv_vle16_v_i16m1(den, vl_ord), 0, vl_ord);
       vuint32m2_t vidx = __riscv_vadd_vx_u32m2(__riscv_vid_v_u32m2(vlmax), 1, vlmax);
-      vint32m2_t vstate = __riscv_vslideup_vx_i32m2(zero32,
+      vint32m2_t vstate = __riscv_vslideup_vx_i32m2_tu(zero32,
             __riscv_vle32_v_i32m2(mem, vl_ord), 0, vl_ord);
 
       for (i = 0; i < N; i++)
@@ -126,10 +129,10 @@ void fir_mem16(const spx_word16_t *x, const spx_coef_t *num, spx_word16_t *y, in
    {
       vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
       vint16m1_t zero16 = __riscv_vmv_v_x_i16m1(0, vlmax);
-      vint16m1_t vnum = __riscv_vslideup_vx_i16m1(zero16,
+      vint16m1_t vnum = __riscv_vslideup_vx_i16m1_tu(zero16,
             __riscv_vle16_v_i16m1(num, vl_ord), 0, vl_ord);
       vuint32m2_t vidx = __riscv_vadd_vx_u32m2(__riscv_vid_v_u32m2(vlmax), 1, vlmax);
-      vint32m2_t vstate = __riscv_vslideup_vx_i32m2(zero32,
+      vint32m2_t vstate = __riscv_vslideup_vx_i32m2_tu(zero32,
             __riscv_vle32_v_i32m2(mem, vl_ord), 0, vl_ord);
 
       for (i = 0; i < N; i++)
@@ -163,12 +166,15 @@ void filter_mem16(const spx_word16_t *x, const spx_coef_t *num, const spx_coef_t
    {
       vint32m2_t zero32 = __riscv_vmv_v_x_i32m2(0, vlmax);
       vint16m1_t zero16 = __riscv_vmv_v_x_i16m1(0, vlmax);
-      vint16m1_t vnum = __riscv_vslideup_vx_i16m1(zero16,
+      vint16m1_t vnum = __riscv_vslideup_vx_i16m1_tu(zero16,
             __riscv_vle16_v_i16m1(num, vl_ord), 0, vl_ord);
-      vint16m1_t vden = __riscv_vslideup_vx_i16m1(zero16,
+      /* _tu: lanes >= vl keep vd (=zero32/zero16), so the zero tail the
+       * VLMAX-wide vrgather/MAC reads below is guaranteed, not incidental
+       * (review R2). */
+      vint16m1_t vden = __riscv_vslideup_vx_i16m1_tu(zero16,
             __riscv_vle16_v_i16m1(den, vl_ord), 0, vl_ord);
       vuint32m2_t vidx = __riscv_vadd_vx_u32m2(__riscv_vid_v_u32m2(vlmax), 1, vlmax);
-      vint32m2_t vstate = __riscv_vslideup_vx_i32m2(zero32,
+      vint32m2_t vstate = __riscv_vslideup_vx_i32m2_tu(zero32,
             __riscv_vle32_v_i32m2(mem, vl_ord), 0, vl_ord);
 
       for (i = 0; i < N; i++)
@@ -263,7 +269,9 @@ static inline spx_word32_t rvv_sumsq_blocked(const spx_word16_t *x, int len, int
          part = __riscv_vwmacc_vv_i32m2(part, w2, w2, vl);
       }
       part = __riscv_vsra_vx_i32m2(part, 6, vl);
-      acc = __riscv_vadd_vv_i32m2(acc, part, vl);
+      /* _tu: keep the zeroed tail of the persistent accumulator — a short
+       * VL update is allowed to clobber inactive lanes otherwise (R1). */
+      acc = __riscv_vadd_vv_i32m2_tu(acc, acc, part, vl);
       off += 4 * vl;
       n -= vl;
    }

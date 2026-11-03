@@ -400,7 +400,7 @@ int lpc_to_lsp (spx_coef_t *a,int lpcrdr,spx_lsp_t *freq,int nb,spx_word16_t del
 
 #ifdef FIXED_POINT
 
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
 #include "rvv/lsp_rvv.h"
 #else
 void lsp_to_lpc(const spx_lsp_t *freq,spx_coef_t *ak,int lpcrdr, char *stack)

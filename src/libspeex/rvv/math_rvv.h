@@ -48,7 +48,9 @@ static inline spx_word32_t rvv_inner_prod(const spx_word16_t *x, const spx_word1
       part = __riscv_vwmacc_vv_i32m2(part, x2, y2, vl);
       part = __riscv_vwmacc_vv_i32m2(part, x3, y3, vl);
       part = __riscv_vsra_vx_i32m2(part, 6, vl);
-      acc = __riscv_vadd_vv_i32m2(acc, part, vl);
+      /* _tu: a short-VL update may clobber inactive lanes of the
+       * persistent accumulator; keep the zeroed tail (review R1). */
+      acc = __riscv_vadd_vv_i32m2_tu(acc, acc, part, vl);
       px += 4 * vl;
       py += 4 * vl;
       n -= vl;
@@ -103,31 +105,31 @@ void rvv_inner_prod_batch5(const spx_word16_t *a, const spx_word16_t *b, const s
          p = __riscv_vwmacc_vv_i32m2(p, a1, a1, vl);
          p = __riscv_vwmacc_vv_i32m2(p, a2, a2, vl);
          p = __riscv_vwmacc_vv_i32m2(p, a3, a3, vl);
-         s0 = __riscv_vadd_vv_i32m2(s0, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+         s0 = __riscv_vadd_vv_i32m2_tu(s0, s0, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
          p = __riscv_vmv_v_x_i32m2(0, vlmax);
          p = __riscv_vwmacc_vv_i32m2(p, b0, b0, vl);
          p = __riscv_vwmacc_vv_i32m2(p, b1, b1, vl);
          p = __riscv_vwmacc_vv_i32m2(p, b2, b2, vl);
          p = __riscv_vwmacc_vv_i32m2(p, b3, b3, vl);
-         s1 = __riscv_vadd_vv_i32m2(s1, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+         s1 = __riscv_vadd_vv_i32m2_tu(s1, s1, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
          p = __riscv_vmv_v_x_i32m2(0, vlmax);
          p = __riscv_vwmacc_vv_i32m2(p, x0, x0, vl);
          p = __riscv_vwmacc_vv_i32m2(p, x1, x1, vl);
          p = __riscv_vwmacc_vv_i32m2(p, x2, x2, vl);
          p = __riscv_vwmacc_vv_i32m2(p, x3, x3, vl);
-         s2 = __riscv_vadd_vv_i32m2(s2, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+         s2 = __riscv_vadd_vv_i32m2_tu(s2, s2, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
          p = __riscv_vmv_v_x_i32m2(0, vlmax);
          p = __riscv_vwmacc_vv_i32m2(p, a0, x0, vl);
          p = __riscv_vwmacc_vv_i32m2(p, a1, x1, vl);
          p = __riscv_vwmacc_vv_i32m2(p, a2, x2, vl);
          p = __riscv_vwmacc_vv_i32m2(p, a3, x3, vl);
-         s3 = __riscv_vadd_vv_i32m2(s3, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+         s3 = __riscv_vadd_vv_i32m2_tu(s3, s3, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
          p = __riscv_vmv_v_x_i32m2(0, vlmax);
          p = __riscv_vwmacc_vv_i32m2(p, b0, x0, vl);
          p = __riscv_vwmacc_vv_i32m2(p, b1, x1, vl);
          p = __riscv_vwmacc_vv_i32m2(p, b2, x2, vl);
          p = __riscv_vwmacc_vv_i32m2(p, b3, x3, vl);
-         s4 = __riscv_vadd_vv_i32m2(s4, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+         s4 = __riscv_vadd_vv_i32m2_tu(s4, s4, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
       }
       pa += 4 * vl;
       pb += 4 * vl;
@@ -288,28 +290,28 @@ void pitch_xcorr(const spx_word16_t *_x, const spx_word16_t *_y, spx_word32_t *c
          part = __riscv_vwmacc_vv_i32m2(part, x1, ya1, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x2, ya2, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x3, ya3, vl);
-         acc0 = __riscv_vadd_vv_i32m2(acc0, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
+         acc0 = __riscv_vadd_vv_i32m2_tu(acc0, acc0, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
 
          part = __riscv_vmv_v_x_i32m2(0, vlmax);
          part = __riscv_vwmacc_vv_i32m2(part, x0, yb0, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x1, yb1, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x2, yb2, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x3, yb3, vl);
-         acc1 = __riscv_vadd_vv_i32m2(acc1, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
+         acc1 = __riscv_vadd_vv_i32m2_tu(acc1, acc1, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
 
          part = __riscv_vmv_v_x_i32m2(0, vlmax);
          part = __riscv_vwmacc_vv_i32m2(part, x0, yc0, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x1, yc1, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x2, yc2, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x3, yc3, vl);
-         acc2 = __riscv_vadd_vv_i32m2(acc2, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
+         acc2 = __riscv_vadd_vv_i32m2_tu(acc2, acc2, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
 
          part = __riscv_vmv_v_x_i32m2(0, vlmax);
          part = __riscv_vwmacc_vv_i32m2(part, x0, yd0, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x1, yd1, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x2, yd2, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x3, yd3, vl);
-         acc3 = __riscv_vadd_vv_i32m2(acc3, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
+         acc3 = __riscv_vadd_vv_i32m2_tu(acc3, acc3, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
 
          px += 4 * vl;
          py0 += 4 * vl;

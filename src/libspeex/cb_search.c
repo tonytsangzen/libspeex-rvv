@@ -133,7 +133,7 @@ int   update_target
    int best_index;
    spx_word32_t best_dist;
    int have_sign;
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
    VARDECL(spx_word16_t *respT);
 #endif
 
@@ -144,7 +144,7 @@ int   update_target
    shape_cb = params->shape_cb;
    have_sign = params->have_sign;
    ALLOC(resp, shape_cb_size*subvect_size, spx_word16_t);
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
    /* column-major shadow of resp: unit-stride loads for the RVV vq kernels */
    ALLOC(respT, shape_cb_size*subvect_size, spx_word16_t);
 #endif
@@ -161,10 +161,10 @@ int   update_target
    /* FIXME: Do we still need to copy the target? */
    SPEEX_COPY(t, target, nsf);
 
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
    compute_weighted_codebook(shape_cb, r, resp, respT, E, shape_cb_size, subvect_size, stack);
 #else
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
    compute_weighted_codebook(shape_cb, r, resp, respT, E, shape_cb_size, subvect_size, stack);
 #else
    compute_weighted_codebook(shape_cb, r, resp, resp2, E, shape_cb_size, subvect_size, stack);
@@ -175,7 +175,7 @@ int   update_target
    {
       spx_word16_t *x=t+subvect_size*i;
       /*Find new n-best based on previous n-best j*/
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
       if (have_sign)
          vq_nbest_sign(x, respT, subvect_size, shape_cb_size, E, 1, &best_index, &best_dist, stack);
       else
@@ -337,7 +337,7 @@ int   update_target
    shape_cb = params->shape_cb;
    have_sign = params->have_sign;
    ALLOC(resp, shape_cb_size*subvect_size, spx_word16_t);
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
    VARDECL(spx_word16_t *respT);
    /* column-major shadow of resp: unit-stride loads for the RVV vq kernels */
    ALLOC(respT, shape_cb_size*subvect_size, spx_word16_t);
@@ -381,7 +381,7 @@ int   update_target
       SPEEX_COPY(&ot[j][0], t, nsf);
 
    /* Pre-compute codewords response and energy */
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
    compute_weighted_codebook(shape_cb, r, resp, respT, E, shape_cb_size, subvect_size, stack);
 #else
    compute_weighted_codebook(shape_cb, r, resp, resp2, E, shape_cb_size, subvect_size, stack);
@@ -414,7 +414,7 @@ int   update_target
          tener *= .5;
 #endif
          /*Find new n-best based on previous n-best j*/
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
          if (have_sign)
             vq_nbest_sign(x, respT, subvect_size, shape_cb_size, E, N, best_index, best_dist, stack);
          else

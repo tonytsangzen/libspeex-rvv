@@ -84,7 +84,12 @@ static void compute_weighted_codebook(const signed char *shape_cb, const spx_wor
 
 #endif /* FIXED_POINT */
 
-#if defined(FIXED_POINT) && !defined(DISABLE_ENCODER) && defined(OVERRIDE_TARGET_UPDATE)
+/* Review R9: the OVERRIDE define used to live inside its own #if guard,
+ * so it was never defined and the whole override was compiled out — the
+ * scalar target_update ran despite round-4 claims. Define it first, then
+ * guard only on the build options (float builds keep the C helper). */
+#if defined(FIXED_POINT) && !defined(DISABLE_ENCODER)
+#define OVERRIDE_TARGET_UPDATE 1
 
 /* t[n] = SUB16(t[n], PSHR32(MULT16_16(g, r[n]), 13)), element-wise.
  * PSHR32 = (a + (1<<(shift-1))) >> shift (arithmetic); SUB16 is a

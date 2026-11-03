@@ -24,4 +24,11 @@ if(DEFINED CMAKE_FIND_ROOT_PATH)
   set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
   set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
   set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+  # Let add_test() targets run under qemu-user on the build host
+  # (review M1: CTest needs an emulator when cross-compiling).
+  find_program(QEMU_RISCV64 qemu-riscv64)
+  if(QEMU_RISCV64)
+    set(CMAKE_CROSSCOMPILING_EMULATOR
+        ${QEMU_RISCV64} -L ${CMAKE_FIND_ROOT_PATH})
+  endif()
 endif()

@@ -46,7 +46,9 @@ do_build() {
       cmake -S . -B "$BUILD_A" "${common[@]}"
       cmake --build "$BUILD_A" -j"$(nproc)"
       cmake -S . -B "$BUILD_B" "${common[@]}" -DSPEEX_SRC_DIR=/work/baseline
-      cmake --build "$BUILD_B" -j"$(nproc)"
+      # B (baseline) has no RVV symbols: build only the artifacts the A/B
+      # and bench steps consume, not the kernel diff tests.
+      cmake --build "$BUILD_B" -j"$(nproc)" --target speex speex_ab bench_e2e testenc testenc_wb testenc_uwb
       for b in "$BUILD_A/test/speex_ab" "$BUILD_A/benchmark/bench_e2e"; do
          if readelf -l "$b" | grep -q INTERP; then
             echo "ERROR: $b is not static"; exit 1
@@ -76,7 +78,8 @@ hash_one() { # $1=file
 }
 
 do_ab() {
-   do_deploy   # never test stale binaries on the board
+   do_build    # freshness: never test binaries from an older source state
+   do_deploy
    prepare_bench_env
    adb_s shell "cd $REMOTE && ./speex_ab_a gen 8000 2 in-nb.raw && ./speex_ab_a gen 16000 2 in-wb.raw && ./speex_ab_a gen 32000 2 in-uwb.raw"
    fail=0
@@ -105,6 +108,8 @@ do_ab() {
 }
 
 do_bench() {
+   do_build    # freshness (review R10)
+   do_deploy
    prepare_bench_env
    for mode in nb wb uwb; do
       for q in 2 8; do

@@ -241,7 +241,7 @@ spx_word16_t compute_rms16(const spx_word16_t *x, int len)
    }
    if (max_val>16383)
    {
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
       spx_word32_t sum = rvv_sumsq_blocked(x, len, 1, 0);
 #else
       spx_word32_t sum=0;
@@ -265,7 +265,7 @@ spx_word16_t compute_rms16(const spx_word16_t *x, int len)
          sig_shift=2;
       if (max_val < 2048)
          sig_shift=3;
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
       sum = rvv_sumsq_blocked(x, len, sig_shift, 1);
 #else
       for (i=0;i<len;i+=4)
@@ -460,7 +460,7 @@ void compute_impulse_response(const spx_coef_t *ak, const spx_coef_t *awk1, cons
 /* Decomposes a signal into low-band and high-band using a QMF */
 void qmf_decomp(const spx_word16_t *xx, const spx_word16_t *aa, spx_word16_t *y1, spx_word16_t *y2, int N, int M, spx_word16_t *mem, char *stack)
 {
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
    rvv_qmf_decomp(xx, aa, y1, y2, N, M, mem, stack);
    return;
 #endif
@@ -503,7 +503,7 @@ void qmf_synth(const spx_word16_t *x1, const spx_word16_t *x2, const spx_word16_
       all odd x[i] are zero -- well, actually they are left out of the array now
       N and M are multiples of 4 */
 {
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
    rvv_qmf_synth(x1, x2, a, y, N, M, mem1, mem2, stack);
    return;
 #endif
@@ -619,7 +619,7 @@ const float shift_filt[3][7] = {{-0.011915f, 0.046995f, -0.152373f, 0.614108f, 0
 #endif
 #endif
 
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
 /* Included here (not at the top) so the RVV interp_pitch can see
  * shift_filt above. */
 #include "rvv/interp_pitch_rvv.h"
@@ -770,7 +770,7 @@ char *stack
    /*interp_pitch(exc, iexc+2*nsf, 2*corr_pitch, 80);*/
 
    /*printf ("%d %d %f\n", pitch, corr_pitch, max_corr*ener_1);*/
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
    {
       /* one sweep for the five blocked-shift dots (order per dot identical
          to inner_prod, so bit-exact) */
@@ -848,7 +848,7 @@ char *stack
       gain0 = MULT16_16_Q15(QCONST16(.6,15),MULT16_16_Q14(g1,gg1));
       gain1 = MULT16_16_Q15(QCONST16(.6,15),MULT16_16_Q14(g2,gg2));
    }
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
    rvv_comb_update(new_exc, exc, iexc, iexc+nsf, gain0, gain1, nsf);
 #else
    for (i=0;i<nsf;i++)
@@ -866,7 +866,7 @@ char *stack
       old_ener = new_ener;
    ngain = PDIV32_16(SHL32(EXTEND32(old_ener),14),new_ener);
 
-#ifdef _USE_RVV
+#if defined(_USE_RVV) && defined(FIXED_POINT)
    rvv_gain_scale(new_exc, ngain, nsf);
 #else
    for (i=0;i<nsf;i++)
