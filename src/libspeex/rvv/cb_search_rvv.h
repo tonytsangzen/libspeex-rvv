@@ -9,6 +9,14 @@
  * the same k/j order is bit-exact. The shape columns (signed char) are
  * loaded once per group with strided loads and sign-extended.
  *
+ * resp2 (round 15) is the SAME data in column-major layout
+ * (resp2[j*shape_cb_size + e]): the entry-parallel kernel writes it with a
+ * free unit-stride store, and vq_nbest/_sign then search it with unit
+ * loads — X60's vlse16 is ~8x slower than vle16. The k-chain of the
+ * triangular convolution is split into two interleaved partial sums
+ * (mod-2^32 associativity keeps this bit-exact) to hide the 5-cycle MAC
+ * latency.
+ *
  * Requires the VAR_ARRAYS stack_alloc mode (uses VLAs of vector types).
  * Only valid for the fixed-point build; otherwise cb_search.c falls back
  * to the C reference. */
@@ -26,7 +34,6 @@ static void compute_weighted_codebook(const signed char *shape_cb, const spx_wor
    size_t vlmax = __riscv_vsetvlmax_e32m2();
    size_t off = 0;
    int j, k;
-   (void)resp2;
    (void)stack;
 
    while (off < (size_t)shape_cb_size)
@@ -49,17 +56,26 @@ static void compute_weighted_codebook(const signed char *shape_cb, const spx_wor
 
       for (j = 0; j < subvect_size; j++)
       {
-         vint32m2_t part = __riscv_vmv_v_x_i32m2(0, vlmax);
+         vint32m2_t p0 = __riscv_vmv_v_x_i32m2(0, vlmax);
+         vint32m2_t p1 = __riscv_vmv_v_x_i32m2(0, vlmax);
+         vint32m2_t part;
          vint16m1_t res16;
-         for (k = 0; k <= j; k++)
+         for (k = 0; k <= j; k += 2)
          {
             vint16m1_t scol = __riscv_vle16_v_i16m1(sbuf + k * vlmax, vl);
-            part = __riscv_vwmacc_vx_i32m2(part, r[j - k], scol, vl);
+            p0 = __riscv_vwmacc_vx_i32m2(p0, r[j - k], scol, vl);
+            if (k + 1 <= j)
+            {
+               scol = __riscv_vle16_v_i16m1(sbuf + (k + 1) * vlmax, vl);
+               p1 = __riscv_vwmacc_vx_i32m2(p1, r[j - k - 1], scol, vl);
+            }
          }
+         part = __riscv_vadd_vv_i32m2(p0, p1, vl);
          part = __riscv_vsra_vx_i32m2(part, 13, vl);
          res16 = __riscv_vncvt_x_x_w_i16m1(part, vl);
          energy = __riscv_vwmacc_vv_i32m2(energy, res16, res16, vl);
          __riscv_vsse16_v_i16m1(resp + off * (size_t)subvect_size + j, rstride, res16, vl);
+         __riscv_vse16_v_i16m1(resp2 + j * (size_t)shape_cb_size + off, res16, vl);
       }
       __riscv_vse32_v_i32m2(E + off, energy, vl);
       off += vl;

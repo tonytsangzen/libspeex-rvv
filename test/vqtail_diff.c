@@ -3,6 +3,12 @@
  * Stresses first-min tie-breaking, sign handling, wrap-prone raw distances
  * and the N>1 insertion fallback.
  *
+ * Round 15 layout: the RVV build's vq_nbest/_sign take the codebook in
+ * COLUMN-MAJOR order (codebook[j*entries + e], as produced by the
+ * compute_weighted_codebook override); the scalar references keep the
+ * upstream entry-major layout, so the driver feeds each side its own copy
+ * of the same values.
+ *
  * Build & run under qemu like test/inner_prod_diff.c.
  */
 #ifdef HAVE_CONFIG_H
@@ -107,6 +113,7 @@ int main(void)
                int sign_test = trial & 1;
                spx_word16_t in[64];
                spx_word16_t *cb  = malloc((size_t)entries*len*sizeof(spx_word16_t));
+               spx_word16_t *cbT = malloc((size_t)entries*len*sizeof(spx_word16_t));
                spx_word32_t *E   = malloc(entries*sizeof(spx_word32_t));
                int *nb1 = malloc(N*sizeof(int)), *nb2 = malloc(N*sizeof(int));
                spx_word32_t *bd1 = malloc(N*sizeof(spx_word32_t));
@@ -132,6 +139,9 @@ int main(void)
                      cb[(size_t)i*len+j] = (spx_word16_t)(mode==0 ? (int)(v%2000)-1000 : (int)v-32768);
                   }
                for (i=0;i<entries;i++)
+                  for (j=0;j<len;j++)
+                     cbT[(size_t)j*entries+i] = cb[(size_t)i*len+j];
+               for (i=0;i<entries;i++)
                {
                   unsigned v = rnd();
                   if (mode == 2)  /* extreme E to stress SHR32 paths */
@@ -145,9 +155,9 @@ int main(void)
                else
                   vq_nbest_ref(in, cb, len, entries, E, N, nb1, bd1, stack);
                if (sign_test)
-                  vq_nbest_sign(in, cb, len, entries, E, N, nb2, bd2, stack);
+                  vq_nbest_sign(in, cbT, len, entries, E, N, nb2, bd2, stack);
                else
-                  vq_nbest(in, cb, len, entries, E, N, nb2, bd2, stack);
+                  vq_nbest(in, cbT, len, entries, E, N, nb2, bd2, stack);
 
                total++;
                for (i=0;i<N;i++)
@@ -161,7 +171,7 @@ int main(void)
                      fails++;
                      break;
                   }
-               free(cb); free(E); free(nb1); free(nb2); free(bd1); free(bd2);
+               free(cb); free(cbT); free(E); free(nb1); free(nb2); free(bd1); free(bd2);
             }
 
    printf("%ld/%ld mismatches\n", fails, total);

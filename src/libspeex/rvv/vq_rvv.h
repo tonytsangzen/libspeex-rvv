@@ -27,22 +27,44 @@
 #define OVERRIDE_VQ_NBEST_SIGN 1
 
 /* Raw distances (sum of in[j]*codebook[entry*len+j], exact int32 wrap) for
- * entries [off, off+vl) into dtmp. Shared by both kernels below. */
-static inline void rvv_vq_raw_dists(const spx_word16_t *in, const spx_word16_t *codebook,
-                                    int len, size_t off, size_t vl, spx_word32_t *dtmp)
+ * entries [off, off+vl) into dtmp. Shared by both kernels below.
+ *
+ * Round 15: the codebook is the column-major resp2 produced by
+ * compute_weighted_codebook (codebook[j*entries + e]) so the per-j vector
+ * across entries is unit-stride (X60 vlse16 is ~8x slower than vle16), and
+ * the accumulation is split into four interleaved partial sums — the MAC
+ * latency is 5 cycles and a single chain runs at 1/5 of the pipe rate.
+ * Two's-complement addition is associative modulo 2^32, so both changes
+ * keep every raw distance bit-identical to the scalar reference. */
+static inline vint32m2_t rvv_vq_raw_dists_vec(const spx_word16_t *in, const spx_word16_t *cbT,
+                                              int len, int entries, size_t off, size_t vl)
 {
    size_t vlmax = __riscv_vsetvlmax_e32m2();
-   const int16_t *cb = (const int16_t *)codebook + off * (size_t)len;
-   ptrdiff_t stride = (ptrdiff_t)(2 * len);
-   size_t j;
+   const spx_word16_t *col = cbT + off; /* cbT[j*entries + e] */
+   vint32m2_t d0 = __riscv_vmv_v_x_i32m2(0, vlmax);
+   vint32m2_t d1 = d0, d2 = d0, d3 = d0;
+   int j = 0;
 
-   vint32m2_t dist = __riscv_vmv_v_x_i32m2(0, vlmax);
-   for (j = 0; j < (size_t)len; j++)
+   for (; j + 3 < len; j += 4)
    {
-      vint16m1_t cbcol = __riscv_vlse16_v_i16m1(cb + j, stride, vl);
-      dist = __riscv_vwmacc_vx_i32m2(dist, in[j], cbcol, vl);
+      d0 = __riscv_vwmacc_vx_i32m2(d0, in[j],     __riscv_vle16_v_i16m1(col + (size_t)(j)  *entries, vl), vl);
+      d1 = __riscv_vwmacc_vx_i32m2(d1, in[j + 1], __riscv_vle16_v_i16m1(col + (size_t)(j+1)*entries, vl), vl);
+      d2 = __riscv_vwmacc_vx_i32m2(d2, in[j + 2], __riscv_vle16_v_i16m1(col + (size_t)(j+2)*entries, vl), vl);
+      d3 = __riscv_vwmacc_vx_i32m2(d3, in[j + 3], __riscv_vle16_v_i16m1(col + (size_t)(j+3)*entries, vl), vl);
    }
-   __riscv_vse32_v_i32m2(dtmp, dist, vl);
+   for (; j < len; j++)
+      d0 = __riscv_vwmacc_vx_i32m2(d0, in[j], __riscv_vle16_v_i16m1(col + (size_t)j*entries, vl), vl);
+
+   d0 = __riscv_vadd_vv_i32m2(d0, d1, vl);
+   d2 = __riscv_vadd_vv_i32m2(d2, d3, vl);
+   return __riscv_vadd_vv_i32m2(d0, d2, vl);
+}
+
+static inline void rvv_vq_raw_dists(const spx_word16_t *in, const spx_word16_t *cbT,
+                                    int len, int entries, size_t off, size_t vl, spx_word32_t *dtmp)
+{
+   __riscv_vse32_v_i32m2(dtmp,
+         rvv_vq_raw_dists_vec(in, cbT, len, entries, off, vl), vl);
 }
 
 #if !defined(DISABLE_ENCODER) && defined(OVERRIDE_VQ_NBEST)
@@ -73,13 +95,13 @@ void vq_nbest(spx_word16_t *in, const spx_word16_t *codebook, int len, int entri
       {
          size_t vl = __riscv_vsetvl_e16m1((size_t)entries - off);
          vint32m2_t e = __riscv_vle32_v_i32m2(E + off, vl);
-         vint32m2_t raw, dist;
+         vint32m2_t dist;
          vbool16_t m;
          vuint32m2_t ci;
          e = __riscv_vsra_vx_i32m2(e, 1, vl);           /* SHR32(E,1) */
-         rvv_vq_raw_dists(in, codebook, len, off, vl, dtmp);
-         raw = __riscv_vle32_v_i32m2(dtmp, vl);
-         dist = __riscv_vsub_vv_i32m2(e, raw, vl);      /* SUB32(E/2, raw) */
+         dist = rvv_vq_raw_dists_vec(in, codebook, len, entries, off, vl);
+         dist = __riscv_vrsub_vx_i32m2(dist, 0, vl);
+         dist = __riscv_vadd_vv_i32m2(dist, e, vl);     /* SUB32(E/2, raw) = E/2 + (-raw) */
          m = __riscv_vmslt_vv_i32m2_b16(dist, rv, vl);
          rv = __riscv_vmerge_vvm_i32m2(rv, dist, m, vl);
          ci = __riscv_vadd_vx_u32m2(__riscv_vid_v_u32m2(vl), (unsigned)off, vl);
@@ -103,7 +125,7 @@ void vq_nbest(spx_word16_t *in, const spx_word16_t *codebook, int len, int entri
    {
       size_t vl = __riscv_vsetvl_e16m1((size_t)entries - off);
       size_t e;
-      rvv_vq_raw_dists(in, codebook, len, off, vl, dtmp);
+      rvv_vq_raw_dists(in, codebook, len, entries, off, vl, dtmp);
       for (e = 0; e < vl; e++, off++)
       {
          spx_word32_t dist = dtmp[e];
@@ -152,8 +174,7 @@ void vq_nbest_sign(spx_word16_t *in, const spx_word16_t *codebook, int len, int 
          vint32m2_t raw, flip, dist;
          vbool16_t m;
          vuint32m2_t ci;
-         rvv_vq_raw_dists(in, codebook, len, off, vl, dtmp);
-         raw = __riscv_vle32_v_i32m2(dtmp, vl);
+         raw = rvv_vq_raw_dists_vec(in, codebook, len, entries, off, vl);
          flip = __riscv_vmerge_vvm_i32m2(raw, __riscv_vrsub_vx_i32m2(raw, 0, vl),
                __riscv_vmsgt_vx_i32m2_b16(raw, 0, vl), vl);
          e = __riscv_vsra_vx_i32m2(e, 1, vl);
@@ -174,9 +195,9 @@ void vq_nbest_sign(spx_word16_t *in, const spx_word16_t *codebook, int len, int 
          }
       {
          spx_word32_t raw = 0;
-         const spx_word16_t *cb = codebook + (size_t)bi * (size_t)len;
+         const spx_word16_t *cb = codebook + bi; /* column-major: cb[j*entries] */
          for (j = 0; j < len; j++)
-            raw = MAC16_16(raw, in[j], cb[j]);
+            raw = MAC16_16(raw, in[j], cb[(size_t)j*entries]);
          sign = (raw > 0) ? 0 : 1;
       }
       best_dist[0] = (spx_word32_t)bv;
@@ -190,7 +211,7 @@ void vq_nbest_sign(spx_word16_t *in, const spx_word16_t *codebook, int len, int 
    {
       size_t vl = __riscv_vsetvl_e16m1((size_t)entries - off);
       size_t e;
-      rvv_vq_raw_dists(in, codebook, len, off, vl, dtmp);
+      rvv_vq_raw_dists(in, codebook, len, entries, off, vl, dtmp);
       for (e = 0; e < vl; e++, off++)
       {
          spx_word32_t dist = dtmp[e];

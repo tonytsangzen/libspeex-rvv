@@ -110,21 +110,27 @@ int pitch_gain_search_3tap_vq(
       sum = __riscv_vwmacc_vx_i32m2(sum, C16[1], tmp, vl);
       tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vx_i32m2(g2, 64, vl), vl);
       sum = __riscv_vwmacc_vx_i32m2(sum, C16[2], tmp, vl);
-      /* sum -= (g0*g1)*C[3], (g2*g1)*C[4], (g2*g0)*C[5] :
-         tmp = trunc16(product) */
+      /* sum -= (ga*gb)*C[k]: negate the PRODUCT vector, not the
+         coefficient — (int16_t)(-C16[k]) wraps for C16[k] == -32768 and
+         flips the term's sign (latent round-13 bug, unreachable from the
+         codec since normalize16 caps |C16| <= 32767, but wrong for the
+         full test range). tmp = trunc16(product) is exact: g in
+         [-96,160] keeps |ga*gb| <= 25600 < 32768, so the wrap negate is
+         exact too, and int16*int16 -> int32 stays exact for |C16| <=
+         32768. */
       tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g0, g1, vl), vl);
-      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[3]), tmp, vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, C16[3], __riscv_vrsub_vx_i16m1(tmp, 0, vl), vl);
       tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g2, g1, vl), vl);
-      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[4]), tmp, vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, C16[4], __riscv_vrsub_vx_i16m1(tmp, 0, vl), vl);
       tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g2, g0, vl), vl);
-      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[5]), tmp, vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, C16[5], __riscv_vrsub_vx_i16m1(tmp, 0, vl), vl);
       /* sum -= (g0*g0)*C[6], (g1*g1)*C[7], (g2*g2)*C[8] */
       tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g0, g0, vl), vl);
-      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[6]), tmp, vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, C16[6], __riscv_vrsub_vx_i16m1(tmp, 0, vl), vl);
       tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g1, g1, vl), vl);
-      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[7]), tmp, vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, C16[7], __riscv_vrsub_vx_i16m1(tmp, 0, vl), vl);
       tmp = __riscv_vncvt_x_x_w_i16m1(__riscv_vwmul_vv_i32m2(g2, g2, vl), vl);
-      sum = __riscv_vwmacc_vx_i32m2(sum, (int16_t)(-C16[8]), tmp, vl);
+      sum = __riscv_vwmacc_vx_i32m2(sum, C16[8], __riscv_vrsub_vx_i16m1(tmp, 0, vl), vl);
 
       __riscv_vse32_v_i32m2(sums + off, sum, vl);
       off += vl;

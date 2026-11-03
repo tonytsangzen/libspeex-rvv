@@ -133,6 +133,9 @@ int   update_target
    int best_index;
    spx_word32_t best_dist;
    int have_sign;
+#ifdef _USE_RVV
+   VARDECL(spx_word16_t *respT);
+#endif
 
    params = (const split_cb_params *) par;
    subvect_size = params->subvect_size;
@@ -141,6 +144,10 @@ int   update_target
    shape_cb = params->shape_cb;
    have_sign = params->have_sign;
    ALLOC(resp, shape_cb_size*subvect_size, spx_word16_t);
+#ifdef _USE_RVV
+   /* column-major shadow of resp: unit-stride loads for the RVV vq kernels */
+   ALLOC(respT, shape_cb_size*subvect_size, spx_word16_t);
+#endif
 #ifdef _USE_SSE
    ALLOC(resp2, (shape_cb_size*subvect_size)>>2, __m128);
    ALLOC(E, shape_cb_size>>2, __m128);
@@ -154,18 +161,33 @@ int   update_target
    /* FIXME: Do we still need to copy the target? */
    SPEEX_COPY(t, target, nsf);
 
+#ifdef _USE_RVV
+   compute_weighted_codebook(shape_cb, r, resp, respT, E, shape_cb_size, subvect_size, stack);
+#else
+#ifdef _USE_RVV
+   compute_weighted_codebook(shape_cb, r, resp, respT, E, shape_cb_size, subvect_size, stack);
+#else
    compute_weighted_codebook(shape_cb, r, resp, resp2, E, shape_cb_size, subvect_size, stack);
+#endif
+#endif
 
    for (i=0;i<nb_subvect;i++)
    {
       spx_word16_t *x=t+subvect_size*i;
       /*Find new n-best based on previous n-best j*/
+#ifdef _USE_RVV
+      if (have_sign)
+         vq_nbest_sign(x, respT, subvect_size, shape_cb_size, E, 1, &best_index, &best_dist, stack);
+      else
+         vq_nbest(x, respT, subvect_size, shape_cb_size, E, 1, &best_index, &best_dist, stack);
+#else
 #ifndef DISABLE_WIDEBAND
       if (have_sign)
          vq_nbest_sign(x, resp2, subvect_size, shape_cb_size, E, 1, &best_index, &best_dist, stack);
       else
 #endif /* DISABLE_WIDEBAND */
          vq_nbest(x, resp2, subvect_size, shape_cb_size, E, 1, &best_index, &best_dist, stack);
+#endif
 
       speex_bits_pack(bits,best_index,params->shape_bits+have_sign);
 
@@ -315,6 +337,11 @@ int   update_target
    shape_cb = params->shape_cb;
    have_sign = params->have_sign;
    ALLOC(resp, shape_cb_size*subvect_size, spx_word16_t);
+#ifdef _USE_RVV
+   VARDECL(spx_word16_t *respT);
+   /* column-major shadow of resp: unit-stride loads for the RVV vq kernels */
+   ALLOC(respT, shape_cb_size*subvect_size, spx_word16_t);
+#endif
 #ifdef _USE_SSE
    ALLOC(resp2, (shape_cb_size*subvect_size)>>2, __m128);
    ALLOC(E, shape_cb_size>>2, __m128);
@@ -354,7 +381,11 @@ int   update_target
       SPEEX_COPY(&ot[j][0], t, nsf);
 
    /* Pre-compute codewords response and energy */
+#ifdef _USE_RVV
+   compute_weighted_codebook(shape_cb, r, resp, respT, E, shape_cb_size, subvect_size, stack);
+#else
    compute_weighted_codebook(shape_cb, r, resp, resp2, E, shape_cb_size, subvect_size, stack);
+#endif
 
    for (j=0;j<N;j++)
       odist[j]=0;
@@ -383,12 +414,19 @@ int   update_target
          tener *= .5;
 #endif
          /*Find new n-best based on previous n-best j*/
+#ifdef _USE_RVV
+         if (have_sign)
+            vq_nbest_sign(x, respT, subvect_size, shape_cb_size, E, N, best_index, best_dist, stack);
+         else
+            vq_nbest(x, respT, subvect_size, shape_cb_size, E, N, best_index, best_dist, stack);
+#else
 #ifndef DISABLE_WIDEBAND
          if (have_sign)
             vq_nbest_sign(x, resp2, subvect_size, shape_cb_size, E, N, best_index, best_dist, stack);
          else
 #endif /* DISABLE_WIDEBAND */
             vq_nbest(x, resp2, subvect_size, shape_cb_size, E, N, best_index, best_dist, stack);
+#endif
 
          /*For all new n-bests*/
          for (k=0;k<N;k++)
