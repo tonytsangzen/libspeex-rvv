@@ -3,7 +3,13 @@
 # by scripts/docker-cross.sh). Cached as a local image so the per-iteration
 # loop does not pay apt install every time.
 FROM ubuntu:24.04
+# gcc-14 cross toolchain (RVV intrinsics v1.0 API, __riscv_v_intrinsic=12000):
+# enables segment tuple types (vlseg4e16) used by the round-24 dot kernels.
+# The gcc-14 package ships no unsuffixed riscv64-linux-gnu-gcc, which the
+# CMake toolchain file's find_program expects - symlink it.
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      build-essential cmake gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user ca-certificates && \
+      build-essential cmake gcc-14-riscv64-linux-gnu gcc-riscv64-linux-gnu \
+      libc6-dev-riscv64-cross qemu-user ca-certificates && \
+    ln -sf /usr/bin/riscv64-linux-gnu-gcc-14 /usr/bin/riscv64-linux-gnu-gcc && \
     rm -rf /var/lib/apt/lists/*

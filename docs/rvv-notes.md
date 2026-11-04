@@ -132,3 +132,26 @@ clock_gettime 计时后:
 工程含义:respT 转置布局的收益依据从"跨步 8×"修正为"跨步 3.7×",
 实测内核收益 2~3× 与之自洽;累加链分链的收益上限低于 v2 推断,
 第 15 轮实测(e2e -1~3%)与之自洽。
+
+## 工具链升级记录:gcc-14(第 24 轮,2026-11-04)
+
+- 镜像升级 gcc-13.3 → gcc-14.2(scripts/Dockerfile.buildenv):
+  intrinsics API 从 v0.11(11000)升到 v1.0(12000),
+  **段元组类型可用**:`vint16m1x4_t` + `__riscv_vlseg4e16_v_i16m1x4` +
+  `__riscv_vget_v_i16m1x4_i16m1`(vget 索引必须是编译期常量)。
+- 坑 1:Ubuntu 的 gcc-14 交叉包不装无后缀 `riscv64-linux-gnu-gcc`
+  symlink(CMake 探测需要),Dockerfile 里手动 `ln -sf`。
+- 坑 2:gcc-14 默认 `-std=c23`,隐式函数声明是硬错误——C99 风格
+  老测试代码必须补 `<stdio.h>` 等标准头(bench_e2e 中招)。
+- 坑 3:vmerge 操作数序复验:gcc-14 与 gcc-13 一致(实测汇编
+  m=true 取 op2,与规范 vs1-true 相反),既有调用点无需改动。
+- 特性宏纪律:依赖新 API 的代码一律挂在 `rvv_arch.h` 的
+  `SPEEX_RVV_SEGV4`(API 版本轴)下,内核其它部分保持双 API 兼容;
+  gcc-13 回退路径 = 第 23 轮代码逐字等价,每次改动都要走一遍
+  "关宏全树编译 + CTest" 的回退验证。
+- vlseg4 的位精确依据:field k 与第 k 路 stride-8B vlse16 取到
+  逐元素相同的值——只改加载指令形态,不改任何算术;短 VL 语义
+  (尾部 agnostic)与 _tu 累加器纪律不受影响。
+- qemu 相对信号(TCG,仅供方向参考):segdiff len=160,
+  vlseg4 vs 4×vlse16 rdtime −24%(VLEN128)/−13%(VLEN256);
+  绝对数字只认 X60 真机。

@@ -709,3 +709,39 @@ inner_prod 逐项一致——位精确。R19_NO_GCORR 开关可单独禁用。
 | wb q8 | **-64.1%** | -43.4% |
 | uwb q2 | -45.5% | **-56.2%** |
 | uwb q8 | **-61.6%** | -54.9% |
+
+## 第 24 轮(2026-11-04,工具链升级 gcc-14 + vlseg4 段加载采纳)
+
+**工具链升级**:构建镜像 gcc-13.3 → **gcc-14.2**(Ubuntu 24.04
+gcc-14-riscv64-linux-gnu,intrinsics API v0.11/__riscv_v_intrinsic=11000
+→ **v1.0/12000**,段元组类型 vint16m1x4_t / vlseg4e16 可用)。
+Dockerfile 变更 + 无后缀 riscv64-linux-gnu-gcc symlink;gcc-14 默认
+C23(隐式声明为错误)已修正 bench_e2e 头文件包含。vmerge 操作数序
+在 gcc-14 下复验与 gcc-13 一致(m=true → op2)。
+
+**特性宏**:`rvv_arch.h` 新增 `SPEEX_RVV_SEGV4`(仅
+`__riscv_v_intrinsic >= 12000` 定义);gcc-13 构建经 `#else` 跨步路径
+完整保留。
+
+**内核改造(4 个点积族,段加载双路径,位精确依据:vlseg4e16 的
+field k 与第 k 路 stride-8B vlse16 取到逐元素相同的值,MAC 顺序不变)**:
+
+| 内核 | 改前(跨步加载) | 改后(SEG 路径) |
+|------|------|------|
+| rvv_inner_prod | 8×vlse16 | 2×vlseg4e16 |
+| rvv_inner_prod_batch5 | 12×vlse16 | 3×vlseg4e16 |
+| rvv_sumsq_blocked | 4×vlse16 | 1×vlseg4e16(sumsq_step 辅助,展开保 vget 常量索引) |
+| pitch_xcorr | 20×vlse16 | 5×vlseg4e16(x 段 1 + 每 lag 1,逐 lag 结构限制寄存器存活) |
+
+**验收(qemu 侧全绿,真机掉线期间)**:
+- gcc-14 构建 OK;CTest 9/9;
+- gcc-13 回退路径:SEGV4 宏临时关闭全树编译 + CTest 9/9(回退代码
+  与第 23 轮逐字等价,gcc-13 接受性由此保障);
+- 毒化矩阵:**9 个差分测试 × 4 尾部策略 × 3 VLEN 全部 0 失配**
+  (本轮把 filter/qmf/gcorr 纳入矩阵);
+- qemu A/B **ALL PASS**(6 模式含交叉解码);
+- segdiff 微基准(qemu 相对值,TCG 无绝对意义):rdtime −24%
+  (VLEN128)/ −13%(VLEN256);wall −18%/−13%。
+- **真机 A/B 与 A24-vs-A23 配对基准待设备重连补测**(当日第三次
+  掉线);设备参照:第 22 轮 K3 实验 stride-8B 密集变体 165.5 vs
+  314 ns/call(1.9×)。

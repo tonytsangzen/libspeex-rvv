@@ -34,6 +34,20 @@ static inline spx_word32_t rvv_inner_prod(const spx_word16_t *x, const spx_word1
    while (n > 0)
    {
       vl = __riscv_vsetvl_e16m1(n);
+#ifdef SPEEX_RVV_SEGV4
+      /* one segment load per stream replaces four strided loads
+       * (identical element values; deinterleave is the same) */
+      vint16m1x4_t xs = __riscv_vlseg4e16_v_i16m1x4(px, vl);
+      vint16m1x4_t ys = __riscv_vlseg4e16_v_i16m1x4(py, vl);
+      vint16m1_t x0 = __riscv_vget_v_i16m1x4_i16m1(xs, 0);
+      vint16m1_t x1 = __riscv_vget_v_i16m1x4_i16m1(xs, 1);
+      vint16m1_t x2 = __riscv_vget_v_i16m1x4_i16m1(xs, 2);
+      vint16m1_t x3 = __riscv_vget_v_i16m1x4_i16m1(xs, 3);
+      vint16m1_t y0 = __riscv_vget_v_i16m1x4_i16m1(ys, 0);
+      vint16m1_t y1 = __riscv_vget_v_i16m1x4_i16m1(ys, 1);
+      vint16m1_t y2 = __riscv_vget_v_i16m1x4_i16m1(ys, 2);
+      vint16m1_t y3 = __riscv_vget_v_i16m1x4_i16m1(ys, 3);
+#else
       vint16m1_t x0 = __riscv_vlse16_v_i16m1(px + 0, 4 * sizeof(spx_word16_t), vl);
       vint16m1_t x1 = __riscv_vlse16_v_i16m1(px + 1, 4 * sizeof(spx_word16_t), vl);
       vint16m1_t x2 = __riscv_vlse16_v_i16m1(px + 2, 4 * sizeof(spx_word16_t), vl);
@@ -42,6 +56,7 @@ static inline spx_word32_t rvv_inner_prod(const spx_word16_t *x, const spx_word1
       vint16m1_t y1 = __riscv_vlse16_v_i16m1(py + 1, 4 * sizeof(spx_word16_t), vl);
       vint16m1_t y2 = __riscv_vlse16_v_i16m1(py + 2, 4 * sizeof(spx_word16_t), vl);
       vint16m1_t y3 = __riscv_vlse16_v_i16m1(py + 3, 4 * sizeof(spx_word16_t), vl);
+#endif
       vint32m2_t part = __riscv_vmv_v_x_i32m2(0, vlmax);
       part = __riscv_vwmacc_vv_i32m2(part, x0, y0, vl);
       part = __riscv_vwmacc_vv_i32m2(part, x1, y1, vl);
@@ -87,6 +102,26 @@ void rvv_inner_prod_batch5(const spx_word16_t *a, const spx_word16_t *b, const s
    {
       vl = __riscv_vsetvl_e16m1(n);
       {
+#ifdef SPEEX_RVV_SEGV4
+         /* three segment loads replace twelve strided loads; the
+          * deinterleave is the same, so every extracted vector holds
+          * exactly the elements its vlse16 counterpart had */
+         vint16m1x4_t as = __riscv_vlseg4e16_v_i16m1x4(pa, vl);
+         vint16m1x4_t bs = __riscv_vlseg4e16_v_i16m1x4(pb, vl);
+         vint16m1x4_t xs = __riscv_vlseg4e16_v_i16m1x4(px, vl);
+         vint16m1_t a0 = __riscv_vget_v_i16m1x4_i16m1(as, 0);
+         vint16m1_t a1 = __riscv_vget_v_i16m1x4_i16m1(as, 1);
+         vint16m1_t a2 = __riscv_vget_v_i16m1x4_i16m1(as, 2);
+         vint16m1_t a3 = __riscv_vget_v_i16m1x4_i16m1(as, 3);
+         vint16m1_t b0 = __riscv_vget_v_i16m1x4_i16m1(bs, 0);
+         vint16m1_t b1 = __riscv_vget_v_i16m1x4_i16m1(bs, 1);
+         vint16m1_t b2 = __riscv_vget_v_i16m1x4_i16m1(bs, 2);
+         vint16m1_t b3 = __riscv_vget_v_i16m1x4_i16m1(bs, 3);
+         vint16m1_t x0 = __riscv_vget_v_i16m1x4_i16m1(xs, 0);
+         vint16m1_t x1 = __riscv_vget_v_i16m1x4_i16m1(xs, 1);
+         vint16m1_t x2 = __riscv_vget_v_i16m1x4_i16m1(xs, 2);
+         vint16m1_t x3 = __riscv_vget_v_i16m1x4_i16m1(xs, 3);
+#else
          vint16m1_t a0 = __riscv_vlse16_v_i16m1(pa + 0, 8, vl);
          vint16m1_t a1 = __riscv_vlse16_v_i16m1(pa + 1, 8, vl);
          vint16m1_t a2 = __riscv_vlse16_v_i16m1(pa + 2, 8, vl);
@@ -99,6 +134,7 @@ void rvv_inner_prod_batch5(const spx_word16_t *a, const spx_word16_t *b, const s
          vint16m1_t x1 = __riscv_vlse16_v_i16m1(px + 1, 8, vl);
          vint16m1_t x2 = __riscv_vlse16_v_i16m1(px + 2, 8, vl);
          vint16m1_t x3 = __riscv_vlse16_v_i16m1(px + 3, 8, vl);
+#endif
          vint32m2_t p;
          p = __riscv_vmv_v_x_i32m2(0, vlmax);
          p = __riscv_vwmacc_vv_i32m2(p, a0, a0, vl);
@@ -379,6 +415,52 @@ void pitch_xcorr(const spx_word16_t *_x, const spx_word16_t *_y, spx_word32_t *c
       while (n > 0)
       {
          vl = __riscv_vsetvl_e16m1(n);
+#ifdef SPEEX_RVV_SEGV4
+         /* five segment loads replace twenty strided loads: one shared x
+          * segment plus one per lag. Field k of each segment holds exactly
+          * the elements the corresponding k-th vlse16 loaded, so every MAC
+          * sees identical operands in identical order (bit-exact). Lags
+          * are handled one at a time so at most one y segment is live. */
+         vint16m1x4_t xs = __riscv_vlseg4e16_v_i16m1x4(px, vl);
+         vint16m1_t x0 = __riscv_vget_v_i16m1x4_i16m1(xs, 0);
+         vint16m1_t x1 = __riscv_vget_v_i16m1x4_i16m1(xs, 1);
+         vint16m1_t x2 = __riscv_vget_v_i16m1x4_i16m1(xs, 2);
+         vint16m1_t x3 = __riscv_vget_v_i16m1x4_i16m1(xs, 3);
+         vint16m1x4_t ys;
+         vint32m2_t part;
+
+         ys = __riscv_vlseg4e16_v_i16m1x4(py0, vl);
+         part = __riscv_vmv_v_x_i32m2(0, vlmax);
+         part = __riscv_vwmacc_vv_i32m2(part, x0, __riscv_vget_v_i16m1x4_i16m1(ys, 0), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x1, __riscv_vget_v_i16m1x4_i16m1(ys, 1), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x2, __riscv_vget_v_i16m1x4_i16m1(ys, 2), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x3, __riscv_vget_v_i16m1x4_i16m1(ys, 3), vl);
+         acc0 = __riscv_vadd_vv_i32m2_tu(acc0, acc0, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
+
+         ys = __riscv_vlseg4e16_v_i16m1x4(py1, vl);
+         part = __riscv_vmv_v_x_i32m2(0, vlmax);
+         part = __riscv_vwmacc_vv_i32m2(part, x0, __riscv_vget_v_i16m1x4_i16m1(ys, 0), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x1, __riscv_vget_v_i16m1x4_i16m1(ys, 1), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x2, __riscv_vget_v_i16m1x4_i16m1(ys, 2), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x3, __riscv_vget_v_i16m1x4_i16m1(ys, 3), vl);
+         acc1 = __riscv_vadd_vv_i32m2_tu(acc1, acc1, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
+
+         ys = __riscv_vlseg4e16_v_i16m1x4(py2, vl);
+         part = __riscv_vmv_v_x_i32m2(0, vlmax);
+         part = __riscv_vwmacc_vv_i32m2(part, x0, __riscv_vget_v_i16m1x4_i16m1(ys, 0), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x1, __riscv_vget_v_i16m1x4_i16m1(ys, 1), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x2, __riscv_vget_v_i16m1x4_i16m1(ys, 2), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x3, __riscv_vget_v_i16m1x4_i16m1(ys, 3), vl);
+         acc2 = __riscv_vadd_vv_i32m2_tu(acc2, acc2, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
+
+         ys = __riscv_vlseg4e16_v_i16m1x4(py3, vl);
+         part = __riscv_vmv_v_x_i32m2(0, vlmax);
+         part = __riscv_vwmacc_vv_i32m2(part, x0, __riscv_vget_v_i16m1x4_i16m1(ys, 0), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x1, __riscv_vget_v_i16m1x4_i16m1(ys, 1), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x2, __riscv_vget_v_i16m1x4_i16m1(ys, 2), vl);
+         part = __riscv_vwmacc_vv_i32m2(part, x3, __riscv_vget_v_i16m1x4_i16m1(ys, 3), vl);
+         acc3 = __riscv_vadd_vv_i32m2_tu(acc3, acc3, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
+#else
          vint16m1_t x0 = __riscv_vlse16_v_i16m1(px + 0, 8, vl);
          vint16m1_t x1 = __riscv_vlse16_v_i16m1(px + 1, 8, vl);
          vint16m1_t x2 = __riscv_vlse16_v_i16m1(px + 2, 8, vl);
@@ -428,6 +510,7 @@ void pitch_xcorr(const spx_word16_t *_x, const spx_word16_t *_y, spx_word32_t *c
          part = __riscv_vwmacc_vv_i32m2(part, x2, yd2, vl);
          part = __riscv_vwmacc_vv_i32m2(part, x3, yd3, vl);
          acc3 = __riscv_vadd_vv_i32m2_tu(acc3, acc3, __riscv_vsra_vx_i32m2(part, 6, vl), vl);
+#endif /* SPEEX_RVV_SEGV4 */
 
          px += 4 * vl;
          py0 += 4 * vl;

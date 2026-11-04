@@ -45,6 +45,10 @@ qemu 运行 + A/B 回归":
 ./scripts/docker-cross.sh
 ```
 
+构建镜像工具链:**gcc-14.2**(`scripts/Dockerfile.buildenv`,
+RVV intrinsics v1.0 API;gcc-13 的 v0.11 API 路径仍受支持——段加载
+内核自动回退跨步加载)。
+
 本机有工具链时:
 
 ```bash
@@ -78,9 +82,9 @@ docs/final-report.md 与 docs/perf-log.md):
 最重的 uwb q8 也有编码 37×/解码 203×。
 
 位精确认证:真机 A/B 6 模式(含 aa/ab/ba 交叉解码)ALL PASS;
-7 个内核级差分测试共 **165,960 组随机向量 0 失配**;尾部策略毒化
-矩阵(qemu TA/MA 全 1 × VLEN128/256/512)**72/72 通过**;毒化模式
-端到端 A/B ALL PASS;CTest 7/7。
+9 个内核级差分测试共 **414,537 组比较 0 失配**;尾部策略毒化
+矩阵(qemu TA/MA 全 1 × VLEN128/256/512,**9 测试 × 4 策略 × 3
+VLEN = 108/108 通过**);毒化模式端到端 A/B ALL PASS;CTest 9/9。
 
 ## 日常开发流程
 
@@ -99,11 +103,19 @@ docs/final-report.md 与 docs/perf-log.md):
 21 个 RVV override 点落地(vq 全家、点积家族、滤波器组、QMF 固定
 形态、基音全套、lsp_to_lpc、normalize16、open_loop argmax、滤波器
 状态驻留寄存器、CPU 探测驱动的转置布局/分链累加等),X60 真机全部
-bit-exact,编码最高 **-63.6%**、解码最高 **-56.0%**。
+bit-exact,编码最高 **-64.1%**(wb q8)、解码最高 **-56.2%**
+(uwb q2)。
+
+第 24 轮:构建镜像升级 gcc-14.2(intrinsics v1.0 API,段元组类型
+可用),`SPEEX_RVV_SEGV4` 特性宏下 4 个点积族内核改用 vlseg4e16 段
+加载(inner_prod 2、batch5 3、sumsq 1、pitch_xcorr 5 次段加载,分别
+取代 8/12/4/20 次跨步加载;field k 与第 k 路跨步加载逐元素相同,
+MAC 顺序不变 → 位精确),gcc-13 跨步回退路径经关宏全树编译 +
+CTest 验证保留。毒化矩阵扩到 9 测试 × 4 尾部策略 × 3 VLEN 全绿。
 
 独立审查(code-review-2026-11-03.md)的 M0(正确性)/M1(验证
 体系:CTest、毒化矩阵、配对基准、产物新鲜度)/M2(K1、K2 落地,
 K3 停止判定,K5 消融归因)已全部执行完毕;M3(配对基准、帧时延
-百分位、资源记录、版本声明修正)完成。剩余可选路径:8 核流级
-并行的批处理(库外 API)、停桌面净环境基线重测、新工具链下的
-vlseg4 段加载实验(需支持段元组类型的 gcc/clang)。
+百分位、资源记录、版本声明修正)完成。vlseg4 段加载实验已随工具链
+升级落地(第 24 轮)。剩余可选路径:8 核流级并行的批处理(库外
+API)、停桌面净环境基线重测。

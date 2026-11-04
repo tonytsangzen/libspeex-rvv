@@ -236,6 +236,13 @@ static inline void rvv_gain_scale(spx_word16_t *x, spx_word16_t ngain, int len)
  * int32 adds — exact vs the scalar reference. pre_shift replicates
  * SHR16 (up=0, arithmetic >>) / SHL16 (up=1, wrapping <<) exactly.
  * Callers guarantee len % 4 == 0 (all libspeex callers do). */
+static inline vint32m2_t sumsq_step(vint32m2_t part, vint16m1_t w, int pre_shift, int up, size_t vl)
+{
+   vint16m1_t w2 = up ? __riscv_vsll_vx_i16m1(w, (unsigned int)pre_shift, vl)
+                      : __riscv_vsra_vx_i16m1(w, (unsigned int)pre_shift, vl);
+   return __riscv_vwmacc_vv_i32m2(part, w2, w2, vl);
+}
+
 static inline spx_word32_t rvv_sumsq_blocked(const spx_word16_t *x, int len, int pre_shift, int up)
 {
    size_t vlmax = __riscv_vsetvlmax_e32m2();
@@ -245,16 +252,27 @@ static inline spx_word32_t rvv_sumsq_blocked(const spx_word16_t *x, int len, int
    size_t off = 0;
    while (n > 0)
    {
-      size_t k;
       vl = __riscv_vsetvl_e16m1(n);
       vint32m2_t part = __riscv_vmv_v_x_i32m2(0, vlmax);
-      for (k = 0; k < 4; k++)
+#ifdef SPEEX_RVV_SEGV4
+      /* one segment load replaces four strided loads; field k holds
+       * exactly the elements the k-th vlse16 loaded, so the shifted
+       * operands and the MAC order (k = 0..3) are unchanged */
+      vint16m1x4_t ws = __riscv_vlseg4e16_v_i16m1x4(x + off, vl);
+      part = sumsq_step(part, __riscv_vget_v_i16m1x4_i16m1(ws, 0), pre_shift, up, vl);
+      part = sumsq_step(part, __riscv_vget_v_i16m1x4_i16m1(ws, 1), pre_shift, up, vl);
+      part = sumsq_step(part, __riscv_vget_v_i16m1x4_i16m1(ws, 2), pre_shift, up, vl);
+      part = sumsq_step(part, __riscv_vget_v_i16m1x4_i16m1(ws, 3), pre_shift, up, vl);
+#else
       {
-         vint16m1_t w = __riscv_vlse16_v_i16m1(x + off + k, 4 * sizeof(spx_word16_t), vl);
-         vint16m1_t w2 = up ? __riscv_vsll_vx_i16m1(w, (unsigned int)pre_shift, vl)
-                            : __riscv_vsra_vx_i16m1(w, (unsigned int)pre_shift, vl);
-         part = __riscv_vwmacc_vv_i32m2(part, w2, w2, vl);
+         size_t k;
+         for (k = 0; k < 4; k++)
+         {
+            vint16m1_t w = __riscv_vlse16_v_i16m1(x + off + k, 4 * sizeof(spx_word16_t), vl);
+            part = sumsq_step(part, w, pre_shift, up, vl);
+         }
       }
+#endif
       part = __riscv_vsra_vx_i32m2(part, 6, vl);
       /* _tu: keep the zeroed tail of the persistent accumulator — a short
        * VL update is allowed to clobber inactive lanes otherwise (R1). */

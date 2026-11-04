@@ -22,6 +22,14 @@
  * names below stable so kernels don't care. */
 #define SPEEX_RVV_1P0 1
 
+/* Segment tuple types (vlseg4e16 / vint16m1x4_t) need the v1.0
+ * intrinsics API (gcc-14+, __riscv_v_intrinsic >= 12000). When absent
+ * (gcc-13 = v0.11 API) the dot kernels fall back to per-field strided
+ * loads with identical values. */
+#if defined(__riscv_v_intrinsic) && __riscv_v_intrinsic >= 12000
+#define SPEEX_RVV_SEGV4 1
+#endif
+
 /* Cross-TU RVV helpers shared between module overrides (definitions live
  * in the module headers; prototypes here so any override can call them). */
 #if defined(FIXED_POINT)
