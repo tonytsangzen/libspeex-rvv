@@ -143,6 +143,122 @@ void rvv_inner_prod_batch5(const spx_word16_t *a, const spx_word16_t *b, const s
    out[4] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s4, zero, vlmax));
 }
 
+/* Round 23: pitch_gain_search_3tap's nine correlations in one sweep.
+ * Streams x0/x1/x2 (lag-shifted excitation) and nt (new_target); outputs
+ * c[0..2] = x_k . nt and a[0..8] = x_i . x_j for the upper triangle
+ * (a[0]=x0.x0, a[1]=x0.x1, a[2]=x0.x2, a[3]=x1.x1, a[4]=x1.x2, a[5]=x2.x2).
+ * Per-dot accumulation is exactly rvv_inner_prod's blocked-shift scheme
+ * (block of 4 exact int32 products, arithmetic >>6, wrap add) with the
+ * accumulator updated _tu — bit-identical to nine inner_prod calls.
+ * Loads: 4 streams deinterleaved once per chunk and shared by all nine
+ * dots (the 9-call form loads each stream 3x). */
+void rvv_gain_corr9(const spx_word16_t *x0, const spx_word16_t *x1, const spx_word16_t *x2,
+                    const spx_word16_t *nt, int len, spx_word32_t *c, spx_word32_t *a)
+{
+   size_t vlmax = __riscv_vsetvlmax_e32m2();
+   vint32m1_t zero = __riscv_vmv_v_x_i32m1(0, 1);
+   const int16_t *p0 = (const int16_t *)x0;
+   const int16_t *p1 = (const int16_t *)x1;
+   const int16_t *p2 = (const int16_t *)x2;
+   const int16_t *pn = (const int16_t *)nt;
+   size_t vl, n = (size_t)len >> 2;
+   /* gcc-13 forbids arrays of RVV types: nine named accumulators */
+   vint32m2_t s0 = __riscv_vmv_v_x_i32m2(0, vlmax);
+   vint32m2_t s1 = s0, s2 = s0, s3 = s0, s4 = s0, s5 = s0, s6 = s0, s7 = s0, s8 = s0;
+
+   while (n > 0)
+   {
+      vl = __riscv_vsetvl_e16m1(n);
+      vint16m1_t x00 = __riscv_vlse16_v_i16m1(p0 + 0, 8, vl);
+      vint16m1_t x01 = __riscv_vlse16_v_i16m1(p0 + 1, 8, vl);
+      vint16m1_t x02 = __riscv_vlse16_v_i16m1(p0 + 2, 8, vl);
+      vint16m1_t x03 = __riscv_vlse16_v_i16m1(p0 + 3, 8, vl);
+      vint16m1_t x10 = __riscv_vlse16_v_i16m1(p1 + 0, 8, vl);
+      vint16m1_t x11 = __riscv_vlse16_v_i16m1(p1 + 1, 8, vl);
+      vint16m1_t x12 = __riscv_vlse16_v_i16m1(p1 + 2, 8, vl);
+      vint16m1_t x13 = __riscv_vlse16_v_i16m1(p1 + 3, 8, vl);
+      vint16m1_t x20 = __riscv_vlse16_v_i16m1(p2 + 0, 8, vl);
+      vint16m1_t x21 = __riscv_vlse16_v_i16m1(p2 + 1, 8, vl);
+      vint16m1_t x22 = __riscv_vlse16_v_i16m1(p2 + 2, 8, vl);
+      vint16m1_t x23 = __riscv_vlse16_v_i16m1(p2 + 3, 8, vl);
+      vint16m1_t n0 = __riscv_vlse16_v_i16m1(pn + 0, 8, vl);
+      vint16m1_t n1 = __riscv_vlse16_v_i16m1(pn + 1, 8, vl);
+      vint16m1_t n2 = __riscv_vlse16_v_i16m1(pn + 2, 8, vl);
+      vint16m1_t n3 = __riscv_vlse16_v_i16m1(pn + 3, 8, vl);
+      vint32m2_t p;
+      /* c[k] = x_k . nt */
+      p = __riscv_vmv_v_x_i32m2(0, vlmax);
+      p = __riscv_vwmacc_vv_i32m2(p, x00, n0, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x01, n1, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x02, n2, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x03, n3, vl);
+      s0 = __riscv_vadd_vv_i32m2_tu(s0, s0, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+      p = __riscv_vmv_v_x_i32m2(0, vlmax);
+      p = __riscv_vwmacc_vv_i32m2(p, x10, n0, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x11, n1, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x12, n2, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x13, n3, vl);
+      s1 = __riscv_vadd_vv_i32m2_tu(s1, s1, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+      p = __riscv_vmv_v_x_i32m2(0, vlmax);
+      p = __riscv_vwmacc_vv_i32m2(p, x20, n0, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x21, n1, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x22, n2, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x23, n3, vl);
+      s2 = __riscv_vadd_vv_i32m2_tu(s2, s2, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+      /* a: x0.x0, x0.x1, x0.x2, x1.x1, x1.x2, x2.x2 */
+      p = __riscv_vmv_v_x_i32m2(0, vlmax);
+      p = __riscv_vwmacc_vv_i32m2(p, x00, x00, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x01, x01, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x02, x02, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x03, x03, vl);
+      s3 = __riscv_vadd_vv_i32m2_tu(s3, s3, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+      p = __riscv_vmv_v_x_i32m2(0, vlmax);
+      p = __riscv_vwmacc_vv_i32m2(p, x00, x10, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x01, x11, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x02, x12, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x03, x13, vl);
+      s4 = __riscv_vadd_vv_i32m2_tu(s4, s4, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+      p = __riscv_vmv_v_x_i32m2(0, vlmax);
+      p = __riscv_vwmacc_vv_i32m2(p, x00, x20, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x01, x21, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x02, x22, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x03, x23, vl);
+      s5 = __riscv_vadd_vv_i32m2_tu(s5, s5, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+      p = __riscv_vmv_v_x_i32m2(0, vlmax);
+      p = __riscv_vwmacc_vv_i32m2(p, x10, x10, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x11, x11, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x12, x12, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x13, x13, vl);
+      s6 = __riscv_vadd_vv_i32m2_tu(s6, s6, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+      p = __riscv_vmv_v_x_i32m2(0, vlmax);
+      p = __riscv_vwmacc_vv_i32m2(p, x10, x20, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x11, x21, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x12, x22, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x13, x23, vl);
+      s7 = __riscv_vadd_vv_i32m2_tu(s7, s7, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+      p = __riscv_vmv_v_x_i32m2(0, vlmax);
+      p = __riscv_vwmacc_vv_i32m2(p, x20, x20, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x21, x21, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x22, x22, vl);
+      p = __riscv_vwmacc_vv_i32m2(p, x23, x23, vl);
+      s8 = __riscv_vadd_vv_i32m2_tu(s8, s8, __riscv_vsra_vx_i32m2(p, 6, vl), vl);
+      p0 += 4 * vl;
+      p1 += 4 * vl;
+      p2 += 4 * vl;
+      pn += 4 * vl;
+      n -= vl;
+   }
+   c[0] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s0, zero, vlmax));
+   c[1] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s1, zero, vlmax));
+   c[2] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s2, zero, vlmax));
+   a[0] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s3, zero, vlmax));
+   a[1] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s4, zero, vlmax));
+   a[2] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s5, zero, vlmax));
+   a[3] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s6, zero, vlmax));
+   a[4] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s7, zero, vlmax));
+   a[5] = (spx_word32_t)__riscv_vmv_x_s_i32m1_i32(__riscv_vredsum_vs_i32m2_i32m1(s8, zero, vlmax));
+}
+
 /* pitch_gain_search_3tap_vq: entry-parallel evaluation of the 9-term
  * quadratic form over the gain codebook (lanes = codebook entries),
  * followed by a scalar argmin that replicates the reference's selection

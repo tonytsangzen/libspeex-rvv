@@ -444,11 +444,28 @@ int scaledown
          x[i][j+1]=ADD32(x[i+1][j],MULT16_16_P14(r[j+1], e0));
    }
 
+#if defined(_USE_RVV) && defined(FIXED_POINT) && !defined(R19_NO_GCORR)
+   {
+      /* nine blocked-shift dots in one sweep (per-dot order identical to
+       * inner_prod; loads shared across dots) */
+      spx_word32_t c3[3], a6[6];
+      rvv_gain_corr9(x[0], x[1], x[2], new_target, nsf, c3, a6);
+      for (i=0;i<3;i++)
+         corr[i]=c3[i];
+      A[0][0]=A[0][0]=a6[0];
+      A[0][1]=A[1][0]=a6[1];
+      A[0][2]=A[2][0]=a6[2];
+      A[1][1]=A[1][1]=a6[3];
+      A[1][2]=A[2][1]=a6[4];
+      A[2][2]=A[2][2]=a6[5];
+   }
+#else
    for (i=0;i<3;i++)
       corr[i]=inner_prod(x[i],new_target,nsf);
    for (i=0;i<3;i++)
       for (j=0;j<=i;j++)
          A[i][j]=A[j][i]=inner_prod(x[i],x[j],nsf);
+#endif
 
    {
       spx_word32_t C[9];

@@ -28,6 +28,8 @@
 void pitch_xcorr(const spx_word16_t *_x, const spx_word16_t *_y, spx_word32_t *corr, int len, int nb_pitch, char *stack);
 void rvv_inner_prod_batch5(const spx_word16_t *a, const spx_word16_t *b, const spx_word16_t *x,
                            int len, spx_word32_t *out);
+void rvv_gain_corr9(const spx_word16_t *x0, const spx_word16_t *x1, const spx_word16_t *x2,
+                    const spx_word16_t *nt, int len, spx_word32_t *c, spx_word32_t *a);
 #endif
 
 /* Kernels must stay length-agnostic: always size loops with vsetvl*,

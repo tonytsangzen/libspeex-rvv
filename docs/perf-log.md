@@ -679,3 +679,16 @@ dec q8 vs 全开;正 = 关闭后变慢 = 该内核贡献)**:
   亚毫秒级 vDSO 间隔不可信;rdtime(24MHz CSR)免疫。bench_e2e 的
   多秒区间与帧时延百分位(后者本就用 rdtime)不受影响;真机微
   基准一律使用 rdtime 计时。
+
+## 第 23 轮(2026-11-04,gain_search 9 点积批合并)
+
+pitch_gain_search_3tap 的 9 次独立 inner_prod 调用(3 个 corr 点 +
+6 个 A 上三角点,同一组 4 路输入流)合并为单扫掠内核
+rvv_gain_corr9:每块 4 流解交织加载 16 次(9 调用形态为 72 次)
+被 9 个点积共享,累加器 _tu 更新(第 17 轮纪律),每 dot 累加序与
+inner_prod 逐项一致——位精确。R19_NO_GCORR 开关可单独禁用。
+
+**验收(真机掉线期间完成 qemu 侧)**:gcorr_diff 0/12000(normal+
+毒化);CTest 9/9;qemu A/B ALL PASS。**真机 A/B 与基准待设备
+重连后补测**(当日第二次掉线,轮询 5 分钟未恢复);预期收益
+~1-2% NB 编码(第 16 轮剖析归因:9 次调用 ≈600 ticks/call)。
