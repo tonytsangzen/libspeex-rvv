@@ -25,10 +25,23 @@
 /* Segment tuple types (vlseg4e16 / vint16m1x4_t) need the v1.0
  * intrinsics API (gcc-14+, __riscv_v_intrinsic >= 12000). When absent
  * (gcc-13 = v0.11 API) the dot kernels fall back to per-field strided
- * loads with identical values. */
+ * loads with identical values.
+ *
+ * Adoption verdict (round 24, X60 paired measurement, fresh builds only):
+ * all four dot kernels ship segment loads by default. An earlier
+ * "-2..-27% encode regression" for the combined build turned out to be a
+ * stale-object artifact (incremental rebuild kept an old nb_celp.o after
+ * the kernel-gating macros changed; scripts/device-test.sh now wipes the
+ * build dirs). Fresh paired runs: pitch_xcorr-only SEG +4.3..+9.1% encode
+ * vs all-strided; full SEG ties that on encode and adds +2.8..+6.6%
+ * decode, so SEG-everywhere is the default. Per-kernel ablation switches
+ * (R24_NO_IP / R24_NO_B5 / R24_NO_SUMSQ / R24_NO_PX) remain available. */
 #if defined(__riscv_v_intrinsic) && __riscv_v_intrinsic >= 12000
 #define SPEEX_RVV_SEGV4 1
+#define SPEEX_RVV_SEG_DOT_ALL 1
 #endif
+/* Turn SPEEX_RVV_SEG_DOT_ALL off to keep inner_prod/batch5/sumsq on the
+ * strided path (segment loads stay bit-exact either way). */
 
 /* Cross-TU RVV helpers shared between module overrides (definitions live
  * in the module headers; prototypes here so any override can call them). */

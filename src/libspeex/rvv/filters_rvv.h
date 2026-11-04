@@ -254,10 +254,11 @@ static inline spx_word32_t rvv_sumsq_blocked(const spx_word16_t *x, int len, int
    {
       vl = __riscv_vsetvl_e16m1(n);
       vint32m2_t part = __riscv_vmv_v_x_i32m2(0, vlmax);
-#ifdef SPEEX_RVV_SEGV4
+#if defined(SPEEX_RVV_SEG_DOT_ALL) && !defined(R24_NO_SUMSQ)
       /* one segment load replaces four strided loads; field k holds
        * exactly the elements the k-th vlse16 loaded, so the shifted
-       * operands and the MAC order (k = 0..3) are unchanged */
+       * operands and the MAC order (k = 0..3) are unchanged.
+       * Opt-in like rvv_inner_prod's segment path (round 24). */
       vint16m1x4_t ws = __riscv_vlseg4e16_v_i16m1x4(x + off, vl);
       part = sumsq_step(part, __riscv_vget_v_i16m1x4_i16m1(ws, 0), pre_shift, up, vl);
       part = sumsq_step(part, __riscv_vget_v_i16m1x4_i16m1(ws, 1), pre_shift, up, vl);

@@ -710,38 +710,61 @@ inner_prod 逐项一致——位精确。R19_NO_GCORR 开关可单独禁用。
 | uwb q2 | -45.5% | **-56.2%** |
 | uwb q8 | **-61.6%** | -54.9% |
 
-## 第 24 轮(2026-11-04,工具链升级 gcc-14 + vlseg4 段加载采纳)
+## 第 24 轮(2026-11-04,工具链升级 gcc-14 + vlseg4 段加载全量采纳)
 
-**工具链升级**:构建镜像 gcc-13.3 → **gcc-14.2**(Ubuntu 24.04
-gcc-14-riscv64-linux-gnu,intrinsics API v0.11/__riscv_v_intrinsic=11000
-→ **v1.0/12000**,段元组类型 vint16m1x4_t / vlseg4e16 可用)。
+**工具链升级**:构建镜像 gcc-13.3 → **gcc-14.2**(intrinsics API
+v0.11/11000 → v1.0/12000,段元组类型 vint16m1x4_t / vlseg4e16 可用)。
 Dockerfile 变更 + 无后缀 riscv64-linux-gnu-gcc symlink;gcc-14 默认
-C23(隐式声明为错误)已修正 bench_e2e 头文件包含。vmerge 操作数序
-在 gcc-14 下复验与 gcc-13 一致(m=true → op2)。
+C23(隐式声明为错误)修正了 bench_e2e 头文件包含。vmerge 操作数序
+gcc-14 复验与 gcc-13 一致。
 
-**特性宏**:`rvv_arch.h` 新增 `SPEEX_RVV_SEGV4`(仅
-`__riscv_v_intrinsic >= 12000` 定义);gcc-13 构建经 `#else` 跨步路径
-完整保留。
+**内核改造**:4 个点积族内核段加载双路径(`SPEEX_RVV_SEGV4`,
+gcc-13 经 `#else` 保留跨步路径):inner_prod 8→2、batch5 12→3、
+sumsq 4→1、pitch_xcorr 20→5 次 vlseg4e16。位精确依据:field k 与
+第 k 路 stride-8B vlse16 逐元素相同,MAC 顺序不变。每内核消融开关
+R24_NO_IP/B5/SUMSQ/PX;SPEEX_RVV_SEG_DOT_ALL 现默认开。
 
-**内核改造(4 个点积族,段加载双路径,位精确依据:vlseg4e16 的
-field k 与第 k 路 stride-8B vlse16 取到逐元素相同的值,MAC 顺序不变)**:
+**真机验证插曲(重要教训)**:设备重连后首轮配对基准显示编码全面
+回退(−2~−27%)。逐内核消融出现非单调矛盾(PX_ONLY 反而最快),
+真机微基准证明 vlseg4 对齐不敏感(对齐 168 vs 不对齐 166 ns/call,
+排除对齐假说);最终**目标文件级 diff 定位根因:增量构建在内核门控
+宏变更后保留了旧 nb_celp.o,bench_a 是混合新旧的弗兰肯二进制**——
+同码对照(segoff vs r23 = 0.0%)证明测量方法可靠,污染全在构建侧。
+修复:scripts/device-test.sh do_build 现在先 rm -rf 构建目录。
+**推论:改内核门控宏后必须全新构建;今天所有"vs 旧 bench_a"的
+中途数据全部作废。**
 
-| 内核 | 改前(跨步加载) | 改后(SEG 路径) |
+**干净重测(全新构建,配对基准,中位数 [min..max])**:
+- 同码对照 SEGOFF-vs-R23:enc +0.0/+0.2%(布局噪声 ≈0,方法可信);
+- R24(全 SEG)vs R23 等价物(第 23 轮源码 × gcc-14,隔离内核变更):
+
+| 模式/质量 | 编码提升 | 解码提升 |
 |------|------|------|
-| rvv_inner_prod | 8×vlse16 | 2×vlseg4e16 |
-| rvv_inner_prod_batch5 | 12×vlse16 | 3×vlseg4e16 |
-| rvv_sumsq_blocked | 4×vlse16 | 1×vlseg4e16(sumsq_step 辅助,展开保 vget 常量索引) |
-| pitch_xcorr | 20×vlse16 | 5×vlseg4e16(x 段 1 + 每 lag 1,逐 lag 结构限制寄存器存活) |
+| nb q8 | **+8.0%** [+7.8..+8.7] | **+9.5%** [+9.2..+10.0] |
+| nb q2 | +8.9% [+8.3..+9.6] | +10.0% [+9.5..+10.2] |
+| wb q8 | +5.2% [+4.9..+5.7] | +6.2% [+6.1..+6.8] |
+| wb q2 | +7.3% [+6.8..+7.5] | +6.8% [+6.2..+7.5] |
+| uwb q8 | +4.3% [+3.3..+4.6] | +4.3% [+3.0..+5.4] |
+| uwb q2 | +5.2% [+5.0..+5.8] | +4.6% [+4.3..+5.3] |
 
-**验收(qemu 侧全绿,真机掉线期间)**:
-- gcc-14 构建 OK;CTest 9/9;
-- gcc-13 回退路径:SEGV4 宏临时关闭全树编译 + CTest 9/9(回退代码
-  与第 23 轮逐字等价,gcc-13 接受性由此保障);
-- 毒化矩阵:**9 个差分测试 × 4 尾部策略 × 3 VLEN 全部 0 失配**
-  (本轮把 filter/qmf/gcorr 纳入矩阵);
-- qemu A/B **ALL PASS**(6 模式含交叉解码);
-- segdiff 微基准(qemu 相对值,TCG 无绝对意义):rdtime −24%
-  (VLEN128)/ −13%(VLEN256);wall −18%/−13%。
-- **真机 A/B 与 A24-vs-A23 配对基准待设备重连补测**(当日第三次
-  掉线);设备参照:第 22 轮 K3 实验 stride-8B 密集变体 165.5 vs
-  314 ns/call(1.9×)。
+- 中途消融(新鲜构建对):PX-only SEG vs 全跨步 enc +4.3~+9.1%;
+  全 SEG vs PX-only enc 打平(±0.5%)、dec +2.8~6.6% → 采纳全 SEG。
+
+**累计矩阵(同会话 A vs baseline,两侧均 gcc-14;注意 baseline 的
+自动向量化代码在 gcc-14 下也变快,百分比与第 23 轮的 gcc-13 表
+不可直接比)**:
+
+| 模式/质量 | 编码提升 | 解码提升 |
+|------|------|------|
+| nb q8 | -46.0% | -16.8% |
+| nb q2 | -38.1% | -17.2% |
+| wb q8 | **-62.3%** | -45.7% |
+| wb q2 | -39.9% | -47.7% |
+| uwb q8 | -60.9% | -58.7% |
+| uwb q2 | -44.0% | **-59.9%** |
+
+**验收(全部在修复后的全新构建上重跑)**:CTest 9/9;毒化矩阵
+9 测试 × 4 尾部策略 × 3 VLEN = 108/108 零失配;qemu A/B ALL PASS;
+真机 A/B 6 模式(含交叉解码)ALL PASS;segdiff(X60):vlseg4 对
+4×vlse16 = 1.9~2.5×,对齐不敏感。qemu 相对信号(TCG 仅方向):
+rdtime −24%(VLEN128)/−13%(VLEN256)。

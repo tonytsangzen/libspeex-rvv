@@ -14,11 +14,13 @@ typedef int32_t spx_word32_t;
 
 static inline unsigned long long rdt(void){ unsigned long long v; __asm__ volatile("rdtime %0":"=r"(v)); return v; }
 static unsigned seed = 0xabcdef;
+static int g_off = 0; /* base misalignment in elements (round 24) */
 static int r16(void){ seed = seed*1664525 + 1013904223; return (int)((seed>>16)&0xffff) - 32768; }
 static volatile unsigned long long sink;
 
 static spx_word32_t ip_seg(const short *x, const short *y, int len)
 {
+   x += g_off; y += g_off;
    size_t vlmax = __riscv_vsetvlmax_e32m2();
    vint32m2_t acc = __riscv_vmv_v_x_i32m2(0, vlmax);
    vint32m1_t zero = __riscv_vmv_v_x_i32m1(0, 1);
@@ -52,6 +54,7 @@ static spx_word32_t ip_seg(const short *x, const short *y, int len)
 
 static spx_word32_t ip_strided(const short *x, const short *y, int len)
 {
+   x += g_off; y += g_off;
    size_t vlmax = __riscv_vsetvlmax_e32m2();
    vint32m2_t acc = __riscv_vmv_v_x_i32m2(0, vlmax);
    vint32m1_t zero = __riscv_vmv_v_x_i32m1(0, 1);
@@ -114,9 +117,11 @@ int main(void)
     * iteration — a fixed 8-offset rotation let gcc precompute all results
     * and reduce the loop to a table lookup (0.2 ns/call, review R5
     * pattern again). */
+   for (int a = 0; a < 2; a++)     /* a=1: 2-byte misaligned bases */
    for (int v = 0; v < 2; v++)
    {
       struct timespec t0, t1; unsigned long long c0 = rdt(), c1;
+      g_off = a;
       int rep = 20000;
       clock_gettime(CLOCK_MONOTONIC, &t0);
       c0 = rdt();
@@ -131,7 +136,8 @@ int main(void)
       double us = ((double)(t1.tv_sec-t0.tv_sec)*1e6 + (t1.tv_nsec-t0.tv_nsec)/1e3) / rep;
       double tick_ns = ((c1 - c0) / 24e6) * 1e9 / rep;
       printf("%s len=160: wall %.1f ns/call, rdt %.1f ns/call\n",
-             v ? "vlseg4 " : "strided", us, tick_ns);
+             v ? (a ? "vlseg4 unaligned" : "vlseg4 aligned  ")
+               : (a ? "strided unaligned" : "strided aligned  "), us, tick_ns);
    }
    printf("sink=%llu\n", sink);
    return fails != 0;

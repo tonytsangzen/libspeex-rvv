@@ -34,9 +34,11 @@ static inline spx_word32_t rvv_inner_prod(const spx_word16_t *x, const spx_word1
    while (n > 0)
    {
       vl = __riscv_vsetvl_e16m1(n);
-#ifdef SPEEX_RVV_SEGV4
+#if defined(SPEEX_RVV_SEG_DOT_ALL) && !defined(R24_NO_IP)
       /* one segment load per stream replaces four strided loads
-       * (identical element values; deinterleave is the same) */
+       * (identical element values; deinterleave is the same).
+       * Opt-in: bit-exact and faster in isolation, but X60 e2e measured
+       * layout-sensitive in combined builds (round 24) — default off. */
       vint16m1x4_t xs = __riscv_vlseg4e16_v_i16m1x4(px, vl);
       vint16m1x4_t ys = __riscv_vlseg4e16_v_i16m1x4(py, vl);
       vint16m1_t x0 = __riscv_vget_v_i16m1x4_i16m1(xs, 0);
@@ -102,10 +104,11 @@ void rvv_inner_prod_batch5(const spx_word16_t *a, const spx_word16_t *b, const s
    {
       vl = __riscv_vsetvl_e16m1(n);
       {
-#ifdef SPEEX_RVV_SEGV4
+#if defined(SPEEX_RVV_SEG_DOT_ALL) && !defined(R24_NO_B5)
          /* three segment loads replace twelve strided loads; the
           * deinterleave is the same, so every extracted vector holds
-          * exactly the elements its vlse16 counterpart had */
+          * exactly the elements its vlse16 counterpart had.
+          * Opt-in like rvv_inner_prod's segment path (round 24). */
          vint16m1x4_t as = __riscv_vlseg4e16_v_i16m1x4(pa, vl);
          vint16m1x4_t bs = __riscv_vlseg4e16_v_i16m1x4(pb, vl);
          vint16m1x4_t xs = __riscv_vlseg4e16_v_i16m1x4(px, vl);
@@ -415,8 +418,10 @@ void pitch_xcorr(const spx_word16_t *_x, const spx_word16_t *_y, spx_word32_t *c
       while (n > 0)
       {
          vl = __riscv_vsetvl_e16m1(n);
-#ifdef SPEEX_RVV_SEGV4
+#if defined(SPEEX_RVV_SEGV4) && !defined(R24_NO_PX)
          /* five segment loads replace twenty strided loads: one shared x
+          * (adopted: paired device measurement +4.3..+9.1% encode vs the
+          * all-strided build, round 24).
           * segment plus one per lag. Field k of each segment holds exactly
           * the elements the corresponding k-th vlse16 loaded, so every MAC
           * sees identical operands in identical order (bit-exact). Lags

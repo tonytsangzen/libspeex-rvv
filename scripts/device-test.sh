@@ -31,6 +31,10 @@ ensure_image() {
 }
 
 do_build() {
+   # Wipe build dirs: incremental builds silently keep stale objects when
+   # kernel-gating macros change (round-24 lesson — a mixed binary measured
+   # -34% and poisoned every comparison until caught by object diffing).
+   rm -rf "$BUILD_A" "$BUILD_B"
    ensure_image
    docker run --rm -v "$PWD":/work -w /work \
       -e BUILD_A="$BUILD_A" -e BUILD_B="$BUILD_B" -e RVV_MARCH=${RVV_MARCH:-rv64gcv} \
