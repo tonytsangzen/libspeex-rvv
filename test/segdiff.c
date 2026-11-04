@@ -110,7 +110,10 @@ int main(void)
       if (r1 != r0 || r2 != r0) { printf("len=%d MISMATCH ref=%ld strided=%ld seg=%ld\n", len, (long)r0, (long)r1, (long)r2); fails++; }
    }
    printf("correctness fails=%ld\n", fails);
-   /* timing: len=160, many iterations */
+   /* timing: len=160, many iterations. One input sample is MUTATED per
+    * iteration — a fixed 8-offset rotation let gcc precompute all results
+    * and reduce the loop to a table lookup (0.2 ns/call, review R5
+    * pattern again). */
    for (int v = 0; v < 2; v++)
    {
       struct timespec t0, t1; unsigned long long c0 = rdt(), c1;
@@ -118,12 +121,17 @@ int main(void)
       clock_gettime(CLOCK_MONOTONIC, &t0);
       c0 = rdt();
       for (int i = 0; i < rep; i++)
-         sink ^= (v ? ip_seg(X + (i & 7)*64, Y + (i & 7)*64, 160)
-                    : ip_strided(X + (i & 7)*64, Y + (i & 7)*64, 160));
+      {
+         X[(unsigned)i * 13 % 40] = (short)r16();   /* mutate: no hoisting */
+         sink ^= (unsigned long long)(v ? ip_seg(X, Y, 160)
+                                         : ip_strided(X, Y, 160));
+      }
       c1 = rdt();
       clock_gettime(CLOCK_MONOTONIC, &t1);
-      double us = ((c1 - c0) / 24e6) * 1e6 / rep;
-      printf("%s len=160: %.1f ns/call\n", v ? "vlseg4 " : "strided", us);
+      double us = ((double)(t1.tv_sec-t0.tv_sec)*1e6 + (t1.tv_nsec-t0.tv_nsec)/1e3) / rep;
+      double tick_ns = ((c1 - c0) / 24e6) * 1e9 / rep;
+      printf("%s len=160: wall %.1f ns/call, rdt %.1f ns/call\n",
+             v ? "vlseg4 " : "strided", us, tick_ns);
    }
    printf("sink=%llu\n", sink);
    return fails != 0;
