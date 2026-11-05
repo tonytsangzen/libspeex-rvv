@@ -174,3 +174,21 @@ clock_gettime 计时后:
   4×vlse16 稳定成立——第 22 轮 K3 的 1.9× 不是对齐红利。
 - **gcc-14 代码生成中性**:同源码(全跨步)gcc-14 vs 第 23 轮
   gcc-13 等价物配对 = +0.0/+0.2%。本轮全部净收益来自段加载。
+
+## 第 25 轮:LTO/PGO 与剖析门(2026-11-05)
+
+- **LTO 不可用**:gcc-14.2 交叉工具链 `-flto` 在 RVV intrinsics 跨
+  TU 内联(compute_rms16 → vmv_v_x_i32m2)触发 ICE
+  (riscv-vector-builtins.cc generate_insn);`-flto-partition=none`
+  同样。链接行需要带 `-march=rv64gcv` 才能过第一关(内建函数
+  lowered),但 ICE 在其后。升级 gcc 后重试。
+- **PGO 配方**(generate → 真机训练 → use,真机 A/B bit-exact
+  ALL PASS):见 perf-log 第 25 轮。结果 enc +1.8~3.7% / dec 混杂,
+  未采纳为默认——训练数据代表性与两段式构建的复杂度不抵边际收益。
+- **剖析门教训**:SPEEX_PROF 定义在构建目录的 config.h 里,是 speex
+  目标的私有包含——benchmark TU 看不见时 PROF_GATE 静默变空操作,
+  dec 相归因被 warmup 编码污染 37-46%。这类"宏可见性"问题没有
+  编译告警,只能靠泄漏率检查(剖析 dec 相时 enc 函数占比应为 0)。
+  修法:benchmark/CMakeLists.txt 显式 target_compile_definitions。
+- **剖析口径**:rdtime 在欠账状态下读数整体偏慢 ~1000×,但同一次
+  运行内份额(百分比)仍有效——跨轮比较只看占比,不看绝对值。

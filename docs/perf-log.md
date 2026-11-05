@@ -768,3 +768,50 @@ R24_NO_IP/B5/SUMSQ/PX;SPEEX_RVV_SEG_DOT_ALL 现默认开。
 真机 A/B 6 模式(含交叉解码)ALL PASS;segdiff(X60):vlseg4 对
 4×vlse16 = 1.9~2.5×,对齐不敏感。qemu 相对信号(TCG 仅方向):
 rdtime −24%(VLEN128)/−13%(VLEN256)。
+
+## 第 25 轮(2026-11-05,P0/P1 收敛剖析 + LTO/PGO 实验)
+
+**剖析门 bug 修复**:bench_e2e 的 PROF_GATE 在 SPEEX_PROF=ON 时实为
+空操作——config.h 定义 SPEEX_PROF,但 config.h 在构建目录、是 speex
+目标的私有包含路径,benchmark TU 看不见 → 宏不可见 → 门失效 →
+dec 相剖析混入 warmup 编码(37-46%)。修复:benchmark/CMakeLists.txt
+在 SPEEX_PROF=ON 时给 bench_e2e 补 `target_compile_definitions`。
+(注:本轮还撞上第二次 cmake 陈旧缓存——改 CMakeLists 后必须
+重新 configure 才生效,与第 24 轮教训同源。)
+
+**P0(q2 编码覆盖)结论:无 ≥3% 未向量化块**:
+- nb q2 编码成分(含非内核项):split_cb_search_shape_sign(N1)
+  7.0%、pitch_search_3tap 3.1%、lpc_to_lsp 3.1%(顺序根查找,已论证
+  无解)、open_loop 2.7%、pitch_gain_search 2.5%、lsp_to_lpc 2.4%
+  ——前两名的内部重量级循环(vq_nbest/target_update/inner_prod)
+  均已向量化,剩余为散布的 <1% 标量小环;
+- plan.md 候选 hexc 子模式在 q2 不运行(wb/uwb 剖析中无
+  hexc_search 调用)——该候选作废;
+- q2 档覆盖率低的真身 = nb_encode 内联体中大量 <1% 小环(激励
+  重建、加权、bits 打包),逐个啃 ROI 极低且位精确风险高。
+
+**P1(nb 解码残余)结论:全部为已向量化内核残差**:multicomb
+12.4%(最大项,内含 batch5/inner_prod)、lsp_to_lpc 5.5%、
+interp_pitch 4.6%、compute_rms16 4.5%(sumsq 段加载内核已覆盖)
+——与 K5 当初"低于阈值"判定一致,维持原判。
+
+**单流优化正式收敛**(判据:重剖后无 ≥3% 可行目标;第 24 轮
+单轮 +4.3~8.9% 是最后一轮内核级收益)。
+
+**LTO:被 gcc-14.2 交叉工具链阻断**:`-flto` 链接期在
+compute_rms16 内联 `vmv_v_x_i32m2` 处触发 ICE(generate_insn,
+riscv-vector-builtins.cc:4223);`-flto-partition=none` 同样 ICE。
+上游编译器 bug,项目侧无解,待 gcc 升级后重试。
+
+**PGO(generate→真机训练→use):编码 +1.8~+3.7% 一致正收益,
+解码混杂(nb −1.2~−2.1%,uwb +2.6~+3.5%),真机 A/B 6 模式
+bit-exact ALL PASS。不采纳为默认:低于 ≥3% 连贯目标门槛、nb 解码
+回退、两段式构建 + 真机训练数据依赖(合成扫频信号对真实语音的
+分支代表性存疑)。配方:cmake C_FLAGS=-fprofile-generate 构建 →
+GCOV_PREFIX=/data/local/tmp/gcov GCOV_PREFIX_STRIP=2 训练(6 组
+enc+dec)→ gcda 镜像回 build 目录 → -fprofile-use -fprofile-correction
+重编。需要时按此复现。**
+
+**本轮工程净产出**:剖析门修复(此后 dec 相归因可信)、收敛
+判定完成、LTO/PGO 两个未知项关账。代码零变更(benchmark/
+CMakeLists.txt 一处剖析基建修复,不影响库)。
