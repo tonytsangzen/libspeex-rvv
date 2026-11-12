@@ -226,6 +226,7 @@ spx_word16_t compute_rms(const spx_sig_t *x, int len)
 }
 #endif /* !defined (DISABLE_WIDEBAND) && !defined (DISABLE_ENCODER) */
 
+#ifndef OVERRIDE_COMPUTE_RMS16
 spx_word16_t compute_rms16(const spx_word16_t *x, int len)
 {
    int i;
@@ -281,6 +282,7 @@ spx_word16_t compute_rms16(const spx_word16_t *x, int len)
       return SHL16(spx_sqrt(DIV32(sum,len)),3-sig_shift);
    }
 }
+#endif /* OVERRIDE_COMPUTE_RMS16 */
 
 #ifndef OVERRIDE_NORMALIZE16
 int normalize16(const spx_sig_t *x, spx_word16_t *y, spx_sig_t max_scale, int len)

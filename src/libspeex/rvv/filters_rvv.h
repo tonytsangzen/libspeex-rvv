@@ -619,6 +619,75 @@ int normalize16(const spx_sig_t *x, spx_word16_t *y, spx_sig_t max_scale, int le
 }
 #endif /* R14_NO_NORM16 */
 
+/* compute_rms16 override (round 29): the C body's max-abs scan ran scalar
+ * over every call (decode calls it per subframe). The scan vectorizes as
+ * a widened absolute-value redmax; the sum branches below are the same
+ * rvv_sumsq_blocked calls the C body makes.
+ *
+ * Bit-exactness with the sequential int16 scan: max_val is spx_word16_t,
+ * so an absolute value of 32768 (input -32768) wraps it negative and the
+ * remaining sequential comparisons can "unwrap" it with later values —
+ * a vector redmax cannot replicate that. When the exact max is < 32768
+ * the sequential scan provably returns the exact max (wrap never
+ * triggers), and if it IS 32768 we fall back to the scalar scan. The
+ * fallback also replicates the -32768 lane handling without special
+ * vector code. */
+#if !defined(DISABLE_ENCODER) && !defined(R29_NO_RMS16)
+#define OVERRIDE_COMPUTE_RMS16 1
+spx_word16_t compute_rms16(const spx_word16_t *x, int len)
+{
+   spx_word16_t max_val;
+   int i;
+   {
+      /* widened redmax: exact while no |x| hits 32768 */
+      vint32m1_t m = __riscv_vmv_v_x_i32m1(10, 1);
+      i = 0;
+      while (i < len)
+      {
+         size_t vl = __riscv_vsetvl_e16m1((size_t)(len - i));
+         vint16m1_t v = __riscv_vle16_v_i16m1(x + i, vl);
+         vint32m2_t w = __riscv_vsext_vf2_i32m2(v, vl);
+         vint32m2_t a = __riscv_vmax_vv_i32m2(w, __riscv_vrsub_vx_i32m2(w, 0, vl), vl);
+         /* vl counts source lanes: e16m1 vl == e32m2 lane count here */
+         m = __riscv_vredmax_vs_i32m2_i32m1(a, m, vl);
+         i += vl;
+      }
+      max_val = (spx_word16_t)__riscv_vmv_x_s_i32m1_i32(m);
+      if (max_val == (spx_word16_t)32768)
+      {
+         /* -32768 present: the int16 scan wraps; replicate sequentially */
+         max_val = 10;
+         for (i = 0; i < len; i++)
+         {
+            spx_sig_t tmp = x[i];
+            if (tmp < 0)
+               tmp = -tmp;
+            if (tmp > max_val)
+               max_val = tmp;
+         }
+      }
+   }
+   if (max_val > 16383)
+   {
+      spx_word32_t sum = rvv_sumsq_blocked(x, len, 1, 0);
+      return SHL16(spx_sqrt(DIV32(sum, len)), 4);
+   }
+   else
+   {
+      spx_word32_t sum;
+      int sig_shift = 0;
+      if (max_val < 8192)
+         sig_shift = 1;
+      if (max_val < 4096)
+         sig_shift = 2;
+      if (max_val < 2048)
+         sig_shift = 3;
+      sum = rvv_sumsq_blocked(x, len, sig_shift, 1);
+      return SHL16(spx_sqrt(DIV32(sum, len)), 3 - sig_shift);
+   }
+}
+#endif /* !defined(DISABLE_ENCODER) && !defined(R29_NO_RMS16) */
+
 
 #endif /* FIXED_POINT */
 

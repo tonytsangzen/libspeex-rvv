@@ -928,3 +928,39 @@ performance governor;16 流 × 2s 与 32 流 × 5s 两组)**:
 **线程安全口径**:libspeex 编码/解码器实例间无共享可变状态
 (mode 表为 const),每线程独立 state 即可安全并行;输出与线程数
 无关(本工具即回归测试)。A100 簇维持不可达/不使用。
+
+## 第 29 轮(2026-11-12,P2 撤回 + 净环境重测 P3 + compute_rms16 指令级优化)
+
+**P2 撤回**:按项目决策撤回第 28 轮批转码并行(实现与实测数据
+留档),方向重聚焦单流的指令集效率/内核/流水线。
+
+**P3 净环境重测**:停 sddm(systemd CPU 62.8%→13%),最终矩阵见
+final-report §2.2。净环境下扩展性复测 ×7.78/×7.93@8 线程(留档
+数据,实现已撤回)。
+
+**净环境 + V1 march 重剖(第 26 轮剖析是桌面负载 + 默认 march)**:
+折算到整树,解码侧最大自身体项:compute_rms16 标量壳 ~5%
+(max-abs 扫描,每子帧调用)、lsp_to_lpc 残差 ~10.6%、multicomb
+残差 ~9.1%;编码侧 split_cb 体系内 vq_nbest 已是 N=1 vqtail 向量
+路径(默认 complexity=2 → N=1,N>1 路径仅在 complexity≥3 走到)。
+
+**compute_rms16 整体 override(OVERRIDE_COMPUTE_RMS16)**:
+- 标量 max-abs 扫描 → 变宽(i32)绝对值 vredmax,e16m1/e32m2 每
+  块 16 lane;
+- 位精确要点:max_val 是 spx_word16_t,绝对值 32768(输入 -32768)
+  会使其回绕为负、后续顺序比较可能"解回"——向量 redmax 无法复制
+  该顺序语义。处理:精确最大值 <32768 时顺序扫描可证明等于精确
+  最大值(回绕永不触发);命中 32768 时回退标量扫描逐字复制;
+  red 归约的 vl 必须传数据 vl(e16m1 vl == e32m2 lane 数),传
+  VLMAX 只会归约一半 lane(写完自测抓出);
+- filters.c 的 C 定义补 `#ifndef OVERRIDE_COMPUTE_RMS16` 守卫
+  (原文件里该函数无 override 守卫)。
+
+**验收**:CTest 9/9;毒化 9×4×3 = 108/108;qemu A/B ALL PASS;
+X100 配对(vs 第 26 轮 V1 构建):**enc +0.7~+1.7%、dec
++3.6~+5.0%**。解码单轮超 2% 门槛——第 25 轮"收敛"判定按新证据
+更新:壳级标量扫描仍有可摘果实。
+
+**净环境最终累计(V1+R29 vs baseline,同会话配对,桌面已停)**:
+enc −37.4~−63.8%(wb q8)、dec −21.3~−55.4%(uwb q2);绝对帧时
+见 final-report §2.2。
