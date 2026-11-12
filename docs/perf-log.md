@@ -1010,3 +1010,26 @@ lsp_to_lpc 自身体(净环境剖析 ~10.6%)显著压缩。
 往返/伪串行链)仍有 <3% 级空间,逐项击破中。剩余:
 multicomb 胶水 ~9%(内联内核已优化,余为分支/增益链)、iir_mem16
 ~5%(真顺序递推)、spx_cos/spx_sqrt 标量辅助 ~3%。
+
+## 第 32 轮(2026-11-13,qmf_synth:奇偶解交织消除跨步加载)
+
+**数据驱动**:新增 qmf 形状微基准(4 tap × stride-4B,32B 跨度,
+X100 实测):stride-4B vlse16 形状 85.7 ns/iter vs unit+vslide 形状
+48.6 ns/iter(**1.76×**)——第 26 轮探针的"跨步加载慢 4.7×"在
+qmf 内核的真实形状下依然成立,跨步加载是 qmf_synth 的主要成本。
+
+**改写**:标量参照确认 lane 间 x 索引步进 2(奇偶性固定)→ 把
+yyp/yy2p 镜像(及其 stride-4B tap 加载)替换为 **xx 的偶/奇解交织
+流(反转存储)**:所有 6 个 tap 加载变 unit-stride vle16,基址收敛
+为单一公式 base(t) = M2/2 + off − t(substep B 用 base−1)。加载值
+与 MAC 顺序逐项不变 → 位精确平凡(区别只在取数指令形态)。Setup
+成本不变(同为 2×(N2+M2) 半字)。
+
+**验收**:CTest 9/9;毒化 108/108;qemu A/B ALL PASS。X100 配对
+(vs 第 31 轮):**uwb dec +8.1~+8.7%(两级 QMF)、wb dec +5.6%
+(一级 QMF);nb/enc ±0.4%(无 QMF 路径,sanity ✓)**。
+
+**第 29-32 轮累计(vs 第 26 轮)**:解码累计 ≈ +15~18%(uwb)、
++10~12%(nb);编码 ≈ +3~6%。解码侧剩余大项:compute_rms16 的
+sumsq 内核(7.3%)、lsp_to_lpc 行循环(已 i64 化)、iir_mem16
+(5%,真顺序)、multicomb 胶水(8.9%)。

@@ -415,8 +415,14 @@ static void rvv_qmf_synth(const spx_word16_t *x1, const spx_word16_t *x2, const 
 
    ALLOC(xx1, M2+N2, spx_word16_t);
    ALLOC(xx2, M2+N2, spx_word16_t);
-   ALLOC(yyp, M2+N2, spx_word16_t);
-   ALLOC(yy2p, M2+N2, spx_word16_t);
+   /* Round 32: instead of the yyp/yy2p mirrors (whose tap loads run at
+    * stride 4B because lanes step i by 2), deinterleave xx into even/odd
+    * streams and store them REVERSED. Lane i stepping by 2 then becomes a
+    * unit-stride walk over one parity stream, so every tap load is vle16
+    * (the X100 probe shows strided loads ~1.8x slower than unit loads at
+    * this span). Values and MAC order are unchanged - bit-exact. */
+   ALLOC(yyp, 2*(M2+N2), spx_word16_t);
+   ALLOC(yy2p, 2*(M2+N2), spx_word16_t);
 
    for (i = 0; i < N2; i++)
       xx1[i] = x1[N2-1-i];
@@ -426,37 +432,48 @@ static void rvv_qmf_synth(const spx_word16_t *x1, const spx_word16_t *x2, const 
       xx2[i] = x2[N2-1-i];
    for (i = 0; i < M2; i++)
       xx2[N2+i] = mem2[2*i+1];
-   for (i = 0; i < M2+N2-1; i++)
    {
-      yyp[i] = xx1[N2+M2-2-i];
-      yy2p[i] = xx2[N2+M2-2-i];
+      /* S = size of each parity stream; yyp holds xx1's odd parity
+       * reversed in [0,S) and even parity reversed in [S,2S); yy2p the
+       * same for xx2. yyp[r] = xx1[2(S-1-r)+1], yyp[S+r] = xx1[2(S-1-r)]. */
+      int S = (M2+N2)>>1;
+      for (i = 0; i < S; i++)
+      {
+         int k = S-1-i;
+         yyp[i]     = xx1[2*k+1];
+         yyp[S+i]   = xx1[2*k];
+         yy2p[i]    = xx2[2*k+1];
+         yy2p[S+i]  = xx2[2*k];
+      }
    }
-   yyp[M2+N2-1] = 0;
-   yy2p[M2+N2-1] = 0;
 
    {
       size_t G = (size_t)N2>>1;   /* output groups; N2 multiple of 2 */
       size_t off = 0, n = G;
       int j;
-      int p = N2+M2-2;            /* yyp = mirror of xx: yyp[p-k] = xx[k] */
       while (n > 0)
       {
          size_t vl = __riscv_vsetvl_e16m1(n);
          size_t base = off<<1;   /* i = 2l for lane l */
          vint32m2_t acc0 = zero32, acc1 = zero32, acc2 = zero32, acc3 = zero32;
-         int x10q = p - (N2-2) + (int)base;  /* window idx + per-lane -i term */
+         /* parity-stream bases: lane l, tap pair t reads xx[N2-1+2t-2(off+l)]
+          * (odd parity) and xx[N2+2t-2(off+l)] (even parity); with the
+          * reversed deinterleave both walks are unit-stride from one base:
+          * base(t) = M2/2 + off - t, and substep B's window is base(t)-1. */
+         int base0 = M2/2 + (int)off;
+         int q11 = base0;
+         int x10q = base0;
          for (j = 0; j < M2; j += 2)
          {
-            int q11 = p - (N2-1+j) + (int)base;
             spx_word16_t a0 = a[2*j], a1 = a[2*j+1];
             spx_word16_t a2 = a[2*j+2], a3 = a[2*j+3];
             vint16m1_t w11, w11b, w10, w10b, wB, wBb;
             /* substep A: y0 += a0*x11 - a0*x21 ; y1 += a1*x11 + a1*x21
                           y2 += a0*x10 - a0*x20 ; y3 += a1*x10 + a1*x20 */
-            w11  = __riscv_vlse16_v_i16m1(yyp  + q11, 4, vl);
-            w11b = __riscv_vlse16_v_i16m1(yy2p + q11, 4, vl);
-            w10  = __riscv_vlse16_v_i16m1(yyp  + x10q, 4, vl);
-            w10b = __riscv_vlse16_v_i16m1(yy2p + x10q, 4, vl);
+            w11  = __riscv_vle16_v_i16m1(yyp  + q11, vl);
+            w11b = __riscv_vle16_v_i16m1(yy2p + q11, vl);
+            w10  = __riscv_vle16_v_i16m1(yyp  + (q11 + (M2+N2)/2), vl);
+            w10b = __riscv_vle16_v_i16m1(yy2p + (q11 + (M2+N2)/2), vl);
             acc0 = __riscv_vwmacc_vx_i32m2(acc0, a0, w11, vl);
             acc0 = __riscv_vwmacc_vx_i32m2(acc0, (int16_t)(-a0), w11b, vl);
             acc1 = __riscv_vwmacc_vx_i32m2(acc1, a1, w11, vl);
@@ -467,8 +484,8 @@ static void rvv_qmf_synth(const spx_word16_t *x1, const spx_word16_t *x2, const 
             acc3 = __riscv_vwmacc_vx_i32m2(acc3, a1, w10b, vl);
             /* substep B: rolling window xx[N2+j]; y0/y1 take it, y2/y3
              * reuse x11/x21 — the scalar reference's exact swap */
-            wB  = __riscv_vlse16_v_i16m1(yyp  + (p-(N2+j)) + (int)base, 4, vl);
-            wBb = __riscv_vlse16_v_i16m1(yy2p + (p-(N2+j)) + (int)base, 4, vl);
+            wB  = __riscv_vle16_v_i16m1(yyp  + (q11 - 1) + (M2+N2)/2, vl);
+            wBb = __riscv_vle16_v_i16m1(yy2p + (q11 - 1) + (M2+N2)/2, vl);
             acc0 = __riscv_vwmacc_vx_i32m2(acc0, a2, wB, vl);
             acc0 = __riscv_vwmacc_vx_i32m2(acc0, (int16_t)(-a2), wBb, vl);
             acc1 = __riscv_vwmacc_vx_i32m2(acc1, a3, wB, vl);
@@ -477,7 +494,7 @@ static void rvv_qmf_synth(const spx_word16_t *x1, const spx_word16_t *x2, const 
             acc2 = __riscv_vwmacc_vx_i32m2(acc2, (int16_t)(-a2), w11b, vl);
             acc3 = __riscv_vwmacc_vx_i32m2(acc3, a3, w11, vl);
             acc3 = __riscv_vwmacc_vx_i32m2(acc3, a3, w11b, vl);
-            x10q = p - (N2+j) + (int)base;
+            q11 = q11 - 1;
          }
          for (i = 0; i < 4; i++)
          {
