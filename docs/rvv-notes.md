@@ -210,3 +210,21 @@ clock_gettime 计时后:
 - **cpu_probe 在 X100 复测**:4 独立流吞吐 ~0.9 vec-op/cyc(X60
   ~0.42),vlse16 仍 4.7× 慢于 vle16——形状优先方法论跨代成立;
   L1 翻倍到 64KB,16KB 内核工作集全驻留。
+
+## 第 27 轮:厂商编译器对照(2026-11-12)
+
+- **Bianbu gcc-15.2(bb5)= 厂商调优编译器**:默认
+  `-mtune=spacemit-x100`、`-mvector-strict-align=on`;调优模型
+  spacemit-a100/x60/x100 仅存在于该 fork(Ubuntu gcc-14 没有,
+  交叉不可用)。
+- **实测:原生 gcc-15 全面慢于交叉 gcc-14**(enc −8~−19%、
+  dec −25~−47%)。排除法:strict-align ±0.2%、x60/x100 调优 ±1%
+  ——是 gcc-15 对手写 RVV intrinsics 的调度/寄存器分配退化。
+  LTO 在 gcc-15 可用(修了 gcc-14 ICE)也救不回来。
+- **纪律:编译器选型只认同机配对测量,不认"厂商出品"。**
+- **K3 微架构事实(docs-chip 数据手册)**:X100 四发射乱序
+  VLEN=256 max2.4GHz;A100 = AI 核 VLEN=1024 + IME 指令集
+  (60TOPS),常规会话亲和性不可达,AI 栈专用——CPU 工作留在
+  policy0 大核。
+- gcc-15 修复了 RVV+LTO 的 ICE:升级交叉工具链到 gcc-15 后 LTO
+  值得重测(本轮 LTO 编译已验证可行)。
