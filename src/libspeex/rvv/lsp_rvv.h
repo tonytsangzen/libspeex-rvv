@@ -82,13 +82,14 @@ void lsp_to_lpc(const spx_lsp_t *freq,spx_coef_t *ak,int lpcrdr, char *stack)
 
       int count = 2*(i+1)-2;
       spx_word16_t ap = freqn[2*i], aq = freqn[2*i+1];
+      /* constants across chunks: build once per row, not per chunk */
+      vint16m1_t ap16 = __riscv_vmv_v_x_i16m1(ap, vlmax);
+      vint16m1_t aq16 = __riscv_vmv_v_x_i16m1(aq, vlmax);
       size_t off = 0, n = (size_t)count;
       j = 1;
       while (n > 0)
       {
          size_t vl = __riscv_vsetvl_e16m1(n);
-         vint16m1_t ap16 = __riscv_vmv_v_x_i16m1(ap, vl);
-         vint16m1_t aq16 = __riscv_vmv_v_x_i16m1(aq, vl);
          /* p row */
          {
             vint32m2_t b = __riscv_vle32_v_i32m2(xp[i] + j + 1, vl);
@@ -141,20 +142,52 @@ void lsp_to_lpc(const spx_lsp_t *freq,spx_coef_t *ak,int lpcrdr, char *stack)
 
     /* process last row to extra a{k} */
 
-    for(j=1;j<=lpcrdr;j++) {
-      int shift = QIMP-13;
-
-      /* final filter sections */
-      a = PSHR32(xp[m][j+2] + xout1 + xq[m][j+2] - xout2, shift);
-      xout1 = xp[m][j+2];
-      xout2 = xq[m][j+2];
-
-      /* hard limit ak's to +/- 32767 */
-
-      if (a < -32767) a = -32767;
-      if (a > 32767) a = 32767;
-      ak[j-1] = (short)a;
-
+    /* The C loop is a disguised element-wise form: iteration j uses
+     * xout1/xout2 carried from iteration j-1, which are exactly
+     * xp[m][j+1]/xq[m][j+1]. Substituting, a[j] (j>=2) is
+     * ADD32(ADD32(xp[m][j+2], xp[m][j+1]),
+     *       SUB32(xq[m][j+2], xq[m][j+1])) -- note the xp pair ADDS and
+     * the xq pair SUBTRACTS -- under the same mod-2^32 arithmetic
+     * (two's-complement add/sub are associative modulo 2^32), and
+     * PSHR32/clamp are element-wise - so the serial chain vectorizes
+     * bit-exactly. j=1 is the scalar seed (xout1=xout2=0). */
+    {
+       int shift = QIMP-13;
+       a = PSHR32(xp[m][3] + xq[m][3], shift);
+       if (a < -32767) a = -32767;
+       if (a > 32767) a = 32767;
+       ak[0] = (short)a;
+       {
+          /* clamp in i32 BEFORE narrowing: the C code clamps the shifted
+           * value to +-32767 and only then stores as short; narrowing
+           * first would wrap out-of-range values instead of clamping */
+          size_t off = 1, n = (size_t)lpcrdr - 1;
+          while (n > 0)
+          {
+             size_t vl = __riscv_vsetvl_e16m1(n);
+             /* lane e covers j = off+e+1, so xp[j+2] = xp[m][off+e+3]:
+              * cur/prv bases are off+3 / off+2 (off is the ak index minus
+              * 1, not j) */
+             vint32m2_t xp_cur = __riscv_vle32_v_i32m2(xp[m] + off + 3, vl);
+             vint32m2_t xp_prv = __riscv_vle32_v_i32m2(xp[m] + off + 2, vl);
+             vint32m2_t xq_cur = __riscv_vle32_v_i32m2(xq[m] + off + 3, vl);
+             vint32m2_t xq_prv = __riscv_vle32_v_i32m2(xq[m] + off + 2, vl);
+             vint32m2_t sum = __riscv_vadd_vv_i32m2(
+                  __riscv_vadd_vv_i32m2(xp_cur, xp_prv, vl),
+                  __riscv_vsub_vv_i32m2(xq_cur, xq_prv, vl), vl);
+             vint32m2_t shifted = __riscv_vsra_vx_i32m2(
+                  __riscv_vadd_vx_i32m2(sum, 1 << (shift - 1), vl),
+                  shift, vl);
+             vint32m2_t clamped = __riscv_vmin_vv_i32m2(
+                  __riscv_vmax_vv_i32m2(shifted,
+                     __riscv_vmv_v_x_i32m2(-32767, vl), vl),
+                  __riscv_vmv_v_x_i32m2(32767, vl), vl);
+             __riscv_vse16_v_i16m1(ak + off,
+                  __riscv_vncvt_x_x_w_i16m1(clamped, vl), vl);
+             off += vl;
+             n -= vl;
+          }
+       }
     }
 
 }
