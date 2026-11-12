@@ -27,6 +27,8 @@ void lsp_to_lpc(const spx_lsp_t *freq,spx_coef_t *ak,int lpcrdr, char *stack)
     int i,j;
     spx_word32_t xout1,xout2,xin;
     spx_word32_t mult, a;
+    vint64m4_t zero64;
+    int zero64_init = 0;
     VARDECL(spx_word16_t *freqn);
     VARDECL(spx_word32_t **xp);
     VARDECL(spx_word32_t *xpmem);
@@ -92,17 +94,21 @@ void lsp_to_lpc(const spx_lsp_t *freq,spx_coef_t *ak,int lpcrdr, char *stack)
          size_t vl = __riscv_vsetvl_e16m1(n);
          /* p row */
          {
-            vint32m2_t b = __riscv_vle32_v_i32m2(xp[i] + j + 1, vl);
-            vint16m1_t hi = __riscv_vncvt_x_x_w_i16m1(
-                  __riscv_vsra_vx_i32m2(b, 14, vl), vl);
-            vint16m1_t lo = __riscv_vncvt_x_x_w_i16m1(
-                  __riscv_vand_vx_i32m2(b, 0x3fff, vl), vl);
-            /* C: ADD32(MULT16_16(a, b>>14), SHR(MULT16_16(a, b&0x3fff), 14))
-             * — the >>14 applies ONLY to the low-half product. */
-            vint32m2_t term = __riscv_vwmacc_vx_i32m2(zero32, ap, hi, vl);
-            vint32m2_t term_lo = __riscv_vsra_vx_i32m2(
-                  __riscv_vwmacc_vx_i32m2(zero32, ap, lo, vl), 14, vl);
-            term = __riscv_vadd_vv_i32m2(term, term_lo, vl);
+            /* MULT16_32_Q14(ap, b) via the exact i64 product:
+             * ap*b = ap*(hi*2^14 + lo), and arithmetic-shifting the exact
+             * i64 sum right by 14 gives ap*hi + (ap*lo)>>14 with no
+             * intermediate wrap; truncating to i32 is then congruent mod
+             * 2^32 to the C ADD32 form (vnsra = shift+narrow in one op).
+             * |ap| <= 2^15, |lo| < 2^14 so ap*lo never wraps i32; |hi|
+             * would need |b| >= 2^28 to overflow int16 (xp stays ~2^24). */
+            if (!zero64_init)
+            {
+               zero64 = __riscv_vmv_v_x_i64m4(0, vlmax);
+               zero64_init = 1;
+            }
+            vint64m4_t prod = __riscv_vwmacc_vx_i64m4(zero64, ap,
+                  __riscv_vle32_v_i32m2(xp[i] + j + 1, vl), vl);
+            vint32m2_t term = __riscv_vnsra_wx_i32m2(prod, 14, vl);
             vint32m2_t out = __riscv_vadd_vv_i32m2(
                __riscv_vsub_vv_i32m2(__riscv_vle32_v_i32m2(xp[i] + j + 2, vl),
                                      term, vl),
@@ -111,15 +117,9 @@ void lsp_to_lpc(const spx_lsp_t *freq,spx_coef_t *ak,int lpcrdr, char *stack)
          }
          /* q row */
          {
-            vint32m2_t b = __riscv_vle32_v_i32m2(xq[i] + j + 1, vl);
-            vint16m1_t hi = __riscv_vncvt_x_x_w_i16m1(
-                  __riscv_vsra_vx_i32m2(b, 14, vl), vl);
-            vint16m1_t lo = __riscv_vncvt_x_x_w_i16m1(
-                  __riscv_vand_vx_i32m2(b, 0x3fff, vl), vl);
-            vint32m2_t term = __riscv_vwmacc_vx_i32m2(zero32, aq, hi, vl);
-            vint32m2_t term_lo = __riscv_vsra_vx_i32m2(
-                  __riscv_vwmacc_vx_i32m2(zero32, aq, lo, vl), 14, vl);
-            term = __riscv_vadd_vv_i32m2(term, term_lo, vl);
+            vint64m4_t prod = __riscv_vwmacc_vx_i64m4(zero64, aq,
+                  __riscv_vle32_v_i32m2(xq[i] + j + 1, vl), vl);
+            vint32m2_t term = __riscv_vnsra_wx_i32m2(prod, 14, vl);
             vint32m2_t out = __riscv_vadd_vv_i32m2(
                __riscv_vsub_vv_i32m2(__riscv_vle32_v_i32m2(xq[i] + j + 2, vl),
                                      term, vl),
