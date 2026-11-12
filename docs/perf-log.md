@@ -815,3 +815,49 @@ enc+dec)→ gcda 镜像回 build 目录 → -fprofile-use -fprofile-correction
 **本轮工程净产出**:剖析门修复(此后 dec 相归因可信)、收敛
 判定完成、LTO/PGO 两个未知项关账。代码零变更(benchmark/
 CMakeLists.txt 一处剖析基建修复,不影响库)。
+
+## 第 26 轮(2026-11-12,新目标机 SpacemiT X100 迁移 + 编译参数定制)
+
+**硬件探测(10.91.8.28,root/bianbu,主机名 k3,Bianbu 2.x 内核
+6.18.3)**:SpacemiT X100 ×8 大核(policy0)@2.15GHz + ×8 小核
+(policy8)@1.8GHz(**16 硬件线程**,nproc 显示 8 是亲和性所致);
+VLEN=256(与 X60 相同);L1d/L1i 64KB/核、L2 4MB;memcpy ~12.9GB/s;
+ISA 富集:RVV 1.0 + zvbb/zvbc/zvkb + zba/bb/bc/bs + zicond + zvfh/zfa。
+probe v3 对比 X60:vmacc 依赖链 2.0ns(vec-op)、4 独立流 1.0ns
+(吞吐 ~0.9 vec-op/cyc,X60 的 ~2 倍);vlse16 仍慢 4.7×(15.1 vs
+3.2ns)——形状优先结论继续成立。
+
+**部署通道切换**:adb → SSH(scp/ssh,密钥认证;device-test.sh 仍
+是 adb 版,X100 用临时 scp 流程);基准一律 taskset -c 4 锁大核;
+governor 已设 performance(2150MHz)。
+
+**X100 真机 A/B(默认 rv64gcv 构建)**:6 模式含交叉解码
+**ALL PASS**。累计(同会话配对):enc −33.7~−61.9%、dec
+−17.1~−52.6%——移植零改动即迁移成功。
+
+**编译参数定制(全新构建,门禁全过:CTest 9/9 + 毒化 108/108 +
+qemu A/B ALL PASS,配对基准锁大核)**:
+
+| 变体 | -march / 旗标 | enc vs 默认 | dec vs 默认 | 判定 |
+|------|------|------|------|------|
+| V1 | rv64gcv_zba_zbb_zbc_zbs_zicond | **+4.1~+5.3%** | **+0.7~+2.8%** | **采纳** |
+| V2 | V1 + -mtune=sifive-p600-series | +1.8~+3.3% | −1.5~−4.2% | 否决 |
+
+V2 否决原因:SiFive P600 调度模型与 X100 自研微架构不合,解码
+一致性回退。注意 gcc-14 的 mtune 名是 `sifive-p600-series`
+(不是 sifive-p400/p670);`--param=riscv-autovec-*` 在该构建中
+不存在。zvbb/zvbc 对 MAC 型内核无益,未纳入。
+
+**采纳后 X100 累计矩阵(V1-A vs B,同会话配对)**:
+
+| 模式/质量 | 编码提升 | 解码提升 |
+|------|------|------|
+| nb q2 | -36.9% | -18.7% |
+| nb q8 | -46.4% | -18.5% |
+| wb q2 | -38.1% | -42.6% |
+| wb q8 | **-63.4%** | -40.6% |
+| uwb q2 | -41.5% | **-53.7%** |
+| uwb q8 | -61.6% | -52.3% |
+
+新增 CMake 预设 `riscv64-x100`(RVV_MARCH=rv64gcv_zba_zbb_zbc_zbs_zicond);
+仓库默认 march 保持 rv64gcv 不变(可移植性)。

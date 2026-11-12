@@ -56,6 +56,13 @@ cmake --preset riscv64 && cmake --build build/riscv64 -j
 RUNNER="qemu-riscv64 -L /usr/riscv64-unknown-linux-gnu" ./test/run_ab.sh
 ```
 
+目标机为 SpacemiT X100(K3)时用定制预设(标量位操作 + 条件扩展,
+真机实测编码再 +4~5%、解码 +1~3%;见 docs/perf-log.md 第 26 轮):
+
+```bash
+cmake --preset riscv64-x100 && cmake --build build/riscv64-x100 -j
+```
+
 ## 真机测试(SpacemiT X60 开发板)
 
 目标机 BPMIK102080640200:SpacemiT X60(rv64imafdcv,RVV 1.0,VLEN=256,
@@ -120,7 +127,14 @@ docs/rvv-notes.md。毒化矩阵扩到 9 测试 × 4 尾部策略 × 3 VLEN 全�
 第 25 轮:P0/P1 收敛剖析确认 q2 编码与 nb 解码均无 ≥3% 未向量化
 块,**单流内核优化正式收敛**;顺带修复剖析门宏可见性 bug(PROF_GATE
 曾静默失效)。LTO 被 gcc-14.2 ICE 阻断、PGO 边际不采纳,均关账。
-剩余路径只有库外能力:批转码并行(P2)、净环境重测(P3)。
+
+第 26 轮:迁移到新目标机 **SpacemiT X100**(K3,8×2.15GHz 大核 +
+8×1.8GHz 小核,VLEN=256,SSH 部署)。移植零改动即通过 X100 真机
+A/B(6 模式 bit-exact);基于 ISA 探测定制 `-march`(
+zba/bb/bc/bs + zicond,预设 `riscv64-x100`),真机配对基准编码再
++4.1~5.3%、解码 +0.7~2.8%。X100 累计:编码最高 **-63.4%**(wb q8)、
+解码最高 **-53.7%**(uwb q2)。剩余路径:批转码并行(P2,现含
+16 线程)、净环境重测(P3)。
 
 独立审查(code-review-2026-11-03.md)的 M0(正确性)/M1(验证
 体系:CTest、毒化矩阵、配对基准、产物新鲜度)/M2(K1、K2 落地,

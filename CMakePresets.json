@@ -18,10 +18,22 @@
         "_USE_RVV": "ON",
         "RVV_MARCH": "rv64gcv"
       }
+    },
+    {
+      "name": "riscv64-x100",
+      "displayName": "RISC-V 64 for SpacemiT X100 (bitmanip + conditional)",
+      "binaryDir": "${sourceDir}/build/riscv64-x100",
+      "toolchainFile": "${sourceDir}/cmake/toolchain-riscv64-linux.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "_USE_RVV": "ON",
+        "RVV_MARCH": "rv64gcv_zba_zbb_zbc_zbs_zicond"
+      }
     }
   ],
   "buildPresets": [
     { "name": "native", "configurePreset": "native" },
-    { "name": "riscv64", "configurePreset": "riscv64" }
+    { "name": "riscv64", "configurePreset": "riscv64" },
+    { "name": "riscv64-x100", "configurePreset": "riscv64-x100" }
   ]
 }

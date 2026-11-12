@@ -192,3 +192,21 @@ clock_gettime 计时后:
   修法:benchmark/CMakeLists.txt 显式 target_compile_definitions。
 - **剖析口径**:rdtime 在欠账状态下读数整体偏慢 ~1000×,但同一次
   运行内份额(百分比)仍有效——跨轮比较只看占比,不看绝对值。
+
+## 第 26 轮:X100 目标机笔记(2026-11-12)
+
+- **X100 ≠ X60 的关键差异**:同 VLEN=256 / RVV 1.0,但标量 ISA 富
+  zba/zbb/zbc/zbs + zicond,向量富 zvbb/zvbc/zvkb/zvfh。MAC 型内核
+  用不上 zvbb;zicond/zbb 让标量胶水代码受益(实测 enc +4.1~5.3%)。
+- **16 硬件线程**:policy0(cpu0-7)@2.15GHz + policy8(cpu8-15)
+  @1.8GHz——为 P2 批并行重估容量(8 大核 + 8 小核)。nproc 显示 8
+  是 shell 亲和性,不是硬件上限。基准必须 taskset 锁大核。
+- **microarch 调优**:gcc-14 `-mtune=sifive-p600-series` 对 X100
+  解码一致性回退(−1.5~−4.2%)——SpacemiT 自研微架构与 SiFine P600
+  调度模型不合,不要照搬厂商近似;只采纳语义无风险的 march 扩展。
+- **gcc-14 mtune 名**:合法值是 `sifive-p400-series`/`sifive-p600-series`
+  (不是 p400/p450/p670 裸名,那些只在 `-mcpu=` 列表)。
+  `--param=riscv-autovec-*` 在 Ubuntu gcc-14 不存在。
+- **cpu_probe 在 X100 复测**:4 独立流吞吐 ~0.9 vec-op/cyc(X60
+  ~0.42),vlse16 仍 4.7× 慢于 vle16——形状优先方法论跨代成立;
+  L1 翻倍到 64KB,16KB 内核工作集全驻留。
