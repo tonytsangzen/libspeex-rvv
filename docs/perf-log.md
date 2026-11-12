@@ -1033,3 +1033,18 @@ yyp/yy2p 镜像(及其 stride-4B tap 加载)替换为 **xx 的偶/奇解交织
 +10~12%(nb);编码 ≈ +3~6%。解码侧剩余大项:compute_rms16 的
 sumsq 内核(7.3%)、lsp_to_lpc 行循环(已 i64 化)、iir_mem16
 (5%,真顺序)、multicomb 胶水(8.9%)。
+
+## 第 33 轮(2026-11-13,验证收尾 + skill 沉淀 + 最终矩阵)
+
+- **iir 形状微基准(X100)**:向量 K1 链(vmv.x.s + vslide1down +
+  vwmacc,每样本)37.2µs/帧 vs 纯标量 order-10 IIR 136.7µs
+  (**3.7×**)——vslide1down 依赖链不是瓶颈,K1 形态零改动。
+- **剩余跨步点清点**:qmf_decomp(编码 ~2%,可省 ~0.7%)、
+  resp 列存储(~0.3%)、math/sumsq 的 vlse16(均在 gcc-13 回退
+  分支)——全部低于 1.5% 采纳门槛,登记关账。
+- **最终净环境矩阵(第 33 轮,R32 构建,bench vs baseline)**:
+  enc −38.2~−63.9%、dec −23.7~−60.6%;绝对帧时与实时率见
+  final-report §2.2(桌面已恢复)。
+- **skill 更新**:本次 session 六类教训写入
+  skills/rvv-optimization-loop/SKILL.md(构建卫生、测量优先、
+  形状级优化、伪串行链、语义陷阱三则、工具链解锁条件登记)。
